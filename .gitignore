@@ -1,0 +1,14 @@
+# Ignore environment files
+.env
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore database schemas (e.g., in a specific directory)
+/models/UserModels/
+
+# Ignore other sensitive or generated files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
