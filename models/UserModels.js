@@ -6,8 +6,7 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  // confirmPassword: { type: String, required: true }, // Frontend validation only
-
+  
   role: { type: String, enum: ["user", "admin"], default: "user" }, // Differentiates between admin and regular user
 
   // Wallets
@@ -22,6 +21,7 @@ const UserSchema = new mongoose.Schema({
     secretQuestion: { type: String, required: true },
     secretAnswer: { type: String, required: true },
   },
+  
   agree: { type: Boolean, required: true }, // Terms and conditions agreement
 
   // Profile Customization
@@ -111,7 +111,7 @@ const UserSchema = new mongoose.Schema({
       },
     ],
   },
-
+  
   // Notifications
   notifications: [
     {
@@ -151,6 +151,13 @@ const UserSchema = new mongoose.Schema({
       sms: { type: Boolean, default: false },
     },
   },
+
+  "createdAt" : "Date",
+  "updatedAt": "Date",
+  "isActive" : "Boolean",
+  "isVerified" : "Boolean",
+  "isSuspended": "Boolean",
+  "SuspensionReason": "String"
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);

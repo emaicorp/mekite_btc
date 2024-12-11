@@ -250,6 +250,122 @@ const getTransactionHistory = async (req, res) => {
   }
 };
 
+const getReferralLink = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('referral.referralLink');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json({ referralLink: user.referral.referralLink });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// View Referral Stats
+const getReferralStats = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('referral');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json({
+      totalReferrals: user.referral.totalReferrals,
+      activeReferrals: user.referral.activeReferrals,
+      referralBonuses: user.referral.referralBonuses,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+// View All Plans
+const getAllPlans = async (req, res) => {
+  try {
+    const availablePlans = [
+      { id: 1, name: "Basic", minimumAmount: 100, duration: "30 days", interestRate: "5%" },
+      { id: 2, name: "Premium", minimumAmount: 500, duration: "60 days", interestRate: "10%" },
+      { id: 3, name: "Elite", minimumAmount: 1000, duration: "90 days", interestRate: "15%" },
+    ];
+    res.status(200).json({ plans: availablePlans });
+  } catch (error) {
+    console.error('Error fetching plans:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Choose an Investment Plan
+const choosePlan = async (req, res) => {
+  const { planId, amount, paymentMethod } = req.body;
+
+  try {
+    // Validate user
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Fetch plan details (could come from a database)
+    const availablePlans = [
+      { id: 1, name: "Basic", minimumAmount: 100, duration: "30 days", interestRate: "5%" },
+      { id: 2, name: "Premium", minimumAmount: 500, duration: "60 days", interestRate: "10%" },
+      { id: 3, name: "Elite", minimumAmount: 1000, duration: "90 days", interestRate: "15%" },
+    ];
+    const selectedPlan = availablePlans.find((plan) => plan.id === planId);
+
+    if (!selectedPlan) {
+      return res.status(400).json({ message: 'Invalid plan ID' });
+    }
+    if (amount < selectedPlan.minimumAmount) {
+      return res.status(400).json({ message: `Minimum investment for this plan is ${selectedPlan.minimumAmount}` });
+    }
+
+    // Validate payment method
+    const validMethods = ["usdt", "ethereum", "bitcoin"];
+    if (!validMethods.includes(paymentMethod)) {
+      return res.status(400).json({ message: 'Invalid payment method' });
+    }
+
+    // Add plan to user's plans
+    user.plans.push({
+      chosenPlan: selectedPlan.name,
+      amount,
+      paymentMethod,
+      status: "pending",
+    });
+    await user.save();
+
+    res.status(201).json({ message: 'Investment plan chosen successfully', plan: user.plans[user.plans.length - 1] });
+  } catch (error) {
+    console.error('Error choosing plan:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Track Plan Status
+const getPlanStatus = async (req, res) => {
+  const { planId } = req.params;
+
+  try {
+    // Validate user
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Find the specific plan
+    const plan = user.plans.id(planId);
+    if (!plan) {
+      return res.status(404).json({ message: 'Plan not found' });
+    }
+
+    res.status(200).json({ plan });
+  } catch (error) {
+    console.error('Error fetching plan status:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 
 module.exports = {
   registerUser,
@@ -259,5 +375,10 @@ module.exports = {
   getAccountBalance,
   makeDeposit,
   requestWithdrawal,
-  getTransactionHistory
+  getTransactionHistory,
+  getReferralLink,
+  getReferralStats,
+  getAllPlans,
+  getPlanStatus,
+  choosePlan
 };
