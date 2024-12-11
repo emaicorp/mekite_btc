@@ -144,9 +144,120 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+// Get Account Balance
+const getAccountBalance = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id); // Access the user ID from the token
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ activeBalance: user.balance.activeBalance });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Make a Deposit
+const makeDeposit = async (req, res) => {
+  const { amount, paymentMethod, planId } = req.body;
+
+  if (!amount || !paymentMethod || !planId) {
+    return res.status(400).json({ message: "Amount, payment method, and plan ID are required" });
+  }
+
+  try {
+    const user = await User.findById(req.user._id); // Access the user ID from the token
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Add the deposit amount to the user's balance
+    user.balance.activeBalance += amount;
+    user.balance.totalBalance += amount;
+
+    // Save the updated user balance
+    await user.save();
+
+    // Add transaction history
+    user.history.push({
+      type: "deposit",
+      amount,
+      description: `Deposit of ${amount} using ${paymentMethod}`,
+    });
+    await user.save();
+
+    res.status(200).json({ message: "Deposit successful", newBalance: user.balance.activeBalance });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Request Withdrawal
+const requestWithdrawal = async (req, res) => {
+  const { amount, withdrawalMethod } = req.body;
+
+  if (!amount || !withdrawalMethod) {
+    return res.status(400).json({ message: "Amount and withdrawal method are required" });
+  }
+
+  try {
+    const user = await User.findById(req.user._id); // Access the user ID from the token
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.balance.activeBalance < amount) {
+      return res.status(400).json({ message: "Insufficient balance" });
+    }
+
+    // Deduct the withdrawal amount from the user's balance
+    user.balance.activeBalance -= amount;
+    user.balance.totalBalance -= amount;
+
+    // Save the updated user balance
+    await user.save();
+
+    // Add transaction history
+    user.history.push({
+      type: "withdrawal",
+      amount,
+      description: `Withdrawal of ${amount} via ${withdrawalMethod}`,
+    });
+    await user.save();
+
+    res.status(200).json({ message: "Withdrawal successful", newBalance: user.balance.activeBalance });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Get Transaction History
+const getTransactionHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id); // Access the user ID from the token
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ history: user.history });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
 module.exports = {
   registerUser,
   loginUser,
   verifyEmail,
-  getUserProfile
+  getUserProfile,
+  getAccountBalance,
+  makeDeposit,
+  requestWithdrawal,
+  getTransactionHistory
 };
