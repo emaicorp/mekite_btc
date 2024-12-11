@@ -1,9 +1,15 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/UserModels");
-const jwt = require("jsonwebtoken")
+const jwt = require("jsonwebtoken");
 
 const registerUser = async (req, res) => {
-  const { fullname, username, email, password, confirmPassword, wallets, security, agree } = req.body;
+  const { fullname, username, email, password, confirmPassword, wallets, security, agree, role } = req.body;
+
+  // Validate role
+  const validRoles = ["user", "admin"];
+  if (role && !validRoles.includes(role)) {
+    return res.status(400).json({ message: "Invalid role specified." });
+  }
 
   // Check if passwords match
   if (password !== confirmPassword) {
@@ -23,6 +29,7 @@ const registerUser = async (req, res) => {
       wallets,
       security,
       agree,
+      role: role || "user", // Default to "user" if no role is specified
       referral: {
         referralLink: `https://yourapp.com/referral/${username}`, // Example auto-generated link
       },
@@ -63,6 +70,7 @@ const loginUser = async (req, res) => {
         id: user._id,
         username: user.username,
         email: user.email,
+        role: user.role, // Include role in the token
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" } // Token expires in 1 hour
@@ -80,6 +88,7 @@ const loginUser = async (req, res) => {
         balance: user.balance,
         preferences: user.preferences,
         referral: user.referral,
+        role: user.role, // Include role in the response
       },
     });
   } catch (error) {
@@ -90,5 +99,5 @@ const loginUser = async (req, res) => {
 
 module.exports = {
   registerUser,
-  loginUser
+  loginUser,
 };

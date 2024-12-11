@@ -8,6 +8,8 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   // confirmPassword: { type: String, required: true }, // Frontend validation only
 
+  role: { type: String, enum: ["user", "admin"], default: "user" }, // Differentiates between admin and regular user
+
   // Wallets
   wallets: {
     usdt: { type: String, required: true }, // TRC20 Account ID
