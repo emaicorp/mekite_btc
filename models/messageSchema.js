@@ -1,15 +1,13 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const MessageSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  phone: { type: String, required: true },
-  email: { type: String, required: true },
-  message: { type: String, required: true },
-  adminResponse: { type: String, default: null },
-  createdAt: { type: Date, default: Date.now },
-  respondedAt: { type: Date, default: null },
-});
+const MessageSchema = new Schema({
+  firstName: String,
+  lastName: String,
+  email: String,
+  message: String,
+  adminResponse: { type: String, required: false },  // Admin's response
+  respondedAt: { type: Date, required: false },      // Timestamp of the response
+}, { timestamps: true });
 
-const Message = mongoose.model('Message', MessageSchema);
-module.exports = Message;
+module.exports = mongoose.model('Message', MessageSchema);
