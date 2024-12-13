@@ -1,163 +1,149 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
 
-const UserSchema = new mongoose.Schema({
-  // User Information
+const DepositSchema = new Schema({
+  amount: { type: Number, required: true },
+  currency: { type: String, required: true, enum: ['usdt', 'ethereum', 'bitcoin'] },
+  status: { type: String, enum: ['active', 'completed', 'cancelled'], default: 'active' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+const WithdrawalSchema = new Schema({
+  amount: { type: Number, required: true },
+  currency: { type: String, required: true, enum: ['usdt', 'ethereum', 'bitcoin'] },
+  status: { type: String, enum: ['pending', 'completed', 'rejected'], default: 'pending' },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Schema for user activity
+const ActivitySchema = new Schema({
+  action: { type: String, required: true }, // Description of the activity
+  timestamp: { type: Date, default: Date.now }, // Time of the activity
+});
+
+const UserSchema = new Schema({
   fullname: { type: String, required: true },
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  
-  role: { type: String, enum: ["user", "admin"], default: "user" }, // Differentiates between admin and regular user
-
-  // Wallets
+  roles: { type: [String], default: ['user'] },
   wallets: {
-    usdt: { type: String, required: true }, // TRC20 Account ID
-    ethereum: { type: String, required: true },
-    bitcoin: { type: String, required: true },
+    usdt: { type: String },
+    ethereum: { type: String },
+    bitcoin: { type: String },
   },
-
-  // Security
   security: {
     secretQuestion: { type: String, required: true },
     secretAnswer: { type: String, required: true },
   },
-  
-  agree: { type: Boolean, required: true }, // Terms and conditions agreement
+  referralLink: { type: String, unique: true },
+  walletAddress: { type: String, unique: true },
 
-  // Profile Customization
-  profile: {
-    avatar: { type: String }, // URL to profile picture
-    bio: { type: String },
-    phoneNumber: { type: String }, // Optional
-    country: { type: String }, // Optional
-  },
-
-  // Two-Factor Authentication (2FA)
-  twoFactorAuth: {
-    isEnabled: { type: Boolean, default: false },
-    method: { type: String, enum: ["email", "sms", "authenticator"], default: "email" },
-    secret: { type: String },
-  },
-
-  // Referral Information
-  referral: {
-    referralLink: { type: String, required: true },
-    totalReferrals: { type: Number, default: 0 },
-    activeReferrals: { type: Number, default: 0 },
-    referralBonuses: [
-      {
-        referralId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-        bonusAmount: { type: Number, required: true },
-        date: { type: Date, default: Date.now },
-      },
-    ],
-  },
-
-  // Financial Information
   balance: {
-    activeBalance: { type: Number, default: 0 },
-    totalWithdrawn: { type: Number, default: 0 },
-    totalBalance: { type: Number, default: 0 },
-    availableBalance: { type: Number, default: 0 },
-  },
-  transactionLimits: {
-    dailyLimit: { type: Number, default: 1000 },
-    monthlyLimit: { type: Number, default: 10000 },
+    usdt: { type: Number, default: 0 },
+    ethereum: { type: Number, default: 0 },
+    bitcoin: { type: Number, default: 0 },
   },
 
-  // Investment Plans
-  plans: [
-    {
-      chosenPlan: { type: String, required: true }, // E.g., "Basic", "Premium"
-      amount: { type: Number, required: true },
-      paymentMethod: { type: String, enum: ["usdt", "ethereum", "bitcoin"], required: true },
-      status: { type: String, enum: ["pending", "active", "completed"], default: "pending" },
-      date: { type: Date, default: Date.now },
-    },
-  ],
+  deposits: [DepositSchema], // New deposits field to track user deposits
+  withdrawals: [WithdrawalSchema], // New field to track withdrawals
 
-  // Withdrawals
-  withdrawals: [
-    {
-      amount: { type: Number, required: true },
-      method: { type: String, enum: ["usdt", "ethereum", "bitcoin"], required: true },
-      date: { type: Date, default: Date.now },
-      status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
-    },
-  ],
+    activities: { type: [ActivitySchema], default: [] }, // Define and initialize
 
-  // Transaction History
-  history: [
-    {
-      type: { type: String, enum: ["deposit", "withdrawal", "earning"], required: true },
-      amount: { type: Number, required: true },
-      date: { type: Date, default: Date.now },
-      description: { type: String },
-    },
-  ],
-
-  // Latest Activity
-  latestActivity: { type: Date, default: Date.now },
-
-  // User Verification
-  verificationStatus: {
-    emailVerified: { type: Boolean, default: false },
-    kycVerified: { type: Boolean, default: false },
-    documents: [
-      {
-        documentType: { type: String, enum: ["ID", "Passport", "Driver's License"] },
-        documentUrl: { type: String },
-        status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
-      },
-    ],
-  },
-  
-  // Notifications
-  notifications: [
-    {
-      message: { type: String, required: true },
-      type: { type: String, enum: ["info", "warning", "alert"], default: "info" },
-      read: { type: Boolean, default: false },
-      timestamp: { type: Date, default: Date.now },
-    },
-  ],
-
-  // Audit Logs
-  auditLogs: [
-    {
-      action: { type: String, required: true }, // E.g., "Login", "Withdrawal"
-      ip: { type: String }, // IP address
-      location: { type: String }, // Derived from IP
-      timestamp: { type: Date, default: Date.now },
-    },
-  ],
-
-  // Support Tickets
-  supportTickets: [
-    {
-      subject: { type: String, required: true },
-      message: { type: String, required: true },
-      status: { type: String, enum: ["open", "in-progress", "resolved"], default: "open" },
-      timestamp: { type: Date, default: Date.now },
-    },
-  ],
-
-  // Preferences
-  preferences: {
-    language: { type: String, default: "en" },
-    currency: { type: String, default: "USD" },
-    notificationSettings: {
-      email: { type: Boolean, default: true },
-      sms: { type: Boolean, default: false },
-    },
-  },
-
-  "createdAt" : "Date",
-  "updatedAt": "Date",
-  "isActive" : "Boolean",
-  "isVerified" : "Boolean",
-  "isSuspended": "Boolean",
-  "SuspensionReason": "String"
+  totalEarnings: { type: Number, default: 0 }, // Track total earnings
 }, { timestamps: true });
 
-module.exports = mongoose.model("User", UserSchema);
+UserSchema.pre('save', function (next) {
+  if (this.isNew) {
+    this.referralLink = `https://example.com/referral/${this.username}`;
+    this.walletAddress = `wallet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+  next();
+});
+
+// Method to get user balances
+UserSchema.methods.getBalance = function () {
+  return {
+    usdt: this.balance.usdt,
+    ethereum: this.balance.ethereum,
+    bitcoin: this.balance.bitcoin,
+  };
+};
+
+// Method to update user balances
+UserSchema.methods.updateBalance = function (currency, amount) {
+  if (this.balance[currency] !== undefined) {
+    this.balance[currency] += amount;
+    return this.save();
+  } else {
+    throw new Error(`Unsupported currency: ${currency}`);
+  }
+};
+
+// Method to get active deposits
+UserSchema.methods.getActiveDeposits = function () {
+  return this.deposits.filter(deposit => deposit.status === 'active');
+};
+
+// Method to add earnings to the total
+UserSchema.methods.addEarnings = function (amount) {
+  this.totalEarnings += amount;
+  return this.save();
+};
+
+// Method to get total earnings
+UserSchema.methods.getTotalEarnings = function () {
+  return this.totalEarnings;
+};
+
+// Method to add an activity
+UserSchema.methods.addActivity = function (action) {
+  this.activities.unshift({ action });
+  return this.save();
+};
+
+// Method to get the latest activity
+UserSchema.methods.getLatestActivity = function () {
+  return this.activities.length > 0 ? this.activities[0] : null;
+};
+
+// Method to add a withdrawal request
+UserSchema.methods.requestWithdrawal = function (currency, amount) {
+  if (this.balance[currency] < amount) {
+    throw new Error(`Insufficient ${currency} balance`);
+  }
+
+  // Create withdrawal request
+  const withdrawal = new Withdrawal({
+    amount,
+    currency,
+  });
+
+  this.withdrawals.push(withdrawal); // Add to user's withdrawal history
+  this.balance[currency] -= amount; // Deduct the amount from balance
+
+  return this.save();
+};
+
+// Method to process a pending withdrawal
+UserSchema.methods.processWithdrawal = function (withdrawalId, status) {
+  const withdrawal = this.withdrawals.id(withdrawalId);
+
+  if (!withdrawal) {
+    throw new Error('Withdrawal not found');
+  }
+
+  withdrawal.status = status; // Update the withdrawal status to 'completed' or 'rejected'
+
+  // If completed, update balance
+  if (status === 'completed') {
+    this.balance[withdrawal.currency] -= withdrawal.amount; // Deduct from balance
+  } else if (status === 'rejected') {
+    // If rejected, refund the amount back to the user balance
+    this.balance[withdrawal.currency] += withdrawal.amount;
+  }
+
+  return this.save();
+};
+module.exports = mongoose.model('User', UserSchema);
