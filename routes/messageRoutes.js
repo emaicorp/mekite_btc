@@ -29,7 +29,6 @@ router.post("/send", async (req, res) => {
       res.status(500).json({ error: "Failed to send message." });
     }
   });
-  
 
   // Admin views all messages
 router.get("/messages", async (req, res) => {
