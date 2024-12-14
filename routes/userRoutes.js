@@ -129,7 +129,6 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate email and password
     if (!email || !password) {
       return res.status(400).json({
         message: 'Both email and password are required. Please provide them.',
@@ -137,7 +136,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Find the user by email
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({
@@ -146,7 +144,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Validate password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(400).json({
@@ -155,17 +152,15 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Generate JWT token
     const token = jwt.sign({ id: user._id, roles: user.roles }, 'your_jwt_secret', { expiresIn: '1h' });
 
-    // Send a customized email on successful login
+    // Send customized email on successful login
     await sendEmail(
       user.email,
       'Login Successful - Welcome Back!',
       `Hi ${user.fullname},\n\nYou have successfully logged in to your account.\n\nYour wallet address is: ${user.walletAddress}.\n\nIf you have any questions, feel free to contact support.`
     );
 
-    // Exclude sensitive info like password
     const { password: _, ...userDetails } = user.toObject();
     
     res.status(200).json({
@@ -182,7 +177,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-  
 // Update Profile
 router.put('/update-profile', async (req, res) => {
   try {
