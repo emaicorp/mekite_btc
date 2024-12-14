@@ -56,11 +56,18 @@ const UserSchema = new Schema({
 
 UserSchema.pre('save', function (next) {
   if (this.isNew) {
-    this.referralLink = `https://example.com/referral/${this.username}`;
-    this.walletAddress = `wallet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generate referral link
+    this.referralLink = `https://endearing-chaja-8b54ac.netlify.app/referral/${this.username}`;
+    
+    // Generate a 32-character alphanumeric wallet address
+    this.walletAddress = Array(4)
+      .fill(0)
+      .map(() => Math.random().toString(36).substr(2, 8))
+      .join(''); // Generates 4 * 8 = 32 characters
   }
   next();
 });
+
 
 // Method to get user balances
 UserSchema.methods.getBalance = function () {
