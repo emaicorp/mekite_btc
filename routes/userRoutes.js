@@ -125,44 +125,62 @@ router.post('/register', async (req, res) => {
   }
 });
 
-  router.post('/login', async (req, res) => {
-    try {
-      const { email, password } = req.body;
-  
-      // Validate email and password
-      if (!email || !password) {
-        return res.status(400).json({ message: 'Email and password are required' });
-      }
-  
-      // Find the user by email
-      const user = await User.findOne({ email });
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      // Validate password
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) return res.status(400).json({ message: 'Invalid password' });
-  
-      // Generate JWT token
-      const token = jwt.sign({ id: user._id, roles: user.roles }, 'your_jwt_secret', { expiresIn: '1h' });
-  
-      // Send wallet address to email on successful login
-      await sendEmail(
-        user.email,
-        'Login Successful',
-        `Hello ${user.fullname},\n\nYou have successfully logged in. Your wallet address is: ${user.walletAddress}.`
-      );
-  
-      // Return response with user details (excluding sensitive info)
-      const { password: _, ...userDetails } = user.toObject(); // Exclude password
-      res.status(200).json({
-        message: 'Login successful',
-        token,
-        user: userDetails, // Send user details
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate email and password
+    if (!email || !password) {
+      return res.status(400).json({
+        message: 'Both email and password are required. Please provide them.',
+        style: 'error',
       });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
     }
-  });
+
+    // Find the user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        message: 'No account found with this email. Please check your email or register.',
+        style: 'error',
+      });
+    }
+
+    // Validate password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({
+        message: 'The password you entered is incorrect. Please try again.',
+        style: 'error',
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id, roles: user.roles }, 'your_jwt_secret', { expiresIn: '1h' });
+
+    // Send a customized email on successful login
+    await sendEmail(
+      user.email,
+      'Login Successful - Welcome Back!',
+      `Hi ${user.fullname},\n\nYou have successfully logged in to your account.\n\nYour wallet address is: ${user.walletAddress}.\n\nIf you have any questions, feel free to contact support.`
+    );
+
+    // Exclude sensitive info like password
+    const { password: _, ...userDetails } = user.toObject();
+    
+    res.status(200).json({
+      message: 'Login successful! You are now logged in.',
+      style: 'success',
+      token,
+      user: userDetails,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: `An unexpected error occurred. Please try again later. ${error.message}`,
+      style: 'error',
+    });
+  }
+});
   
 // Update Profile
 router.put('/update-profile', async (req, res) => {
