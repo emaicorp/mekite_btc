@@ -1,39 +1,33 @@
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  host: "smtp.gmail.com",
-  port: 587,  // Try using port 587 for TLS connection
-  secure: false, // TLS
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-
 const sendEmail = (to, subject, text, html) => {
   return new Promise((resolve, reject) => {
-    const mailOptions = {
-      // from: {
-      //   name: "Centrallnationalbank",
-      //   address: process.env.EMAIL_USER,
-      // },
-      from: `"Central National Bank" <${process.env.EMAIL_USER}>`, // Display name masks the email
+    // Ensure you have the email user and password in your environment variables
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER, // Replace with your email user
+        pass: process.env.EMAIL_PASS, // Replace with your email password (or app password)
+      },
+    });
 
-      to,
-      subject,
-      text,
-      html,
+    const mailOptions = {
+      from: `"Central National Bank" <${process.env.EMAIL_USER}>`, // Sender address
+      to, // Receiver address
+      subject, // Subject line
+      text, // Plaintext body
+      html, // HTML body
     };
+
+    console.log('Sending email to:', to);
 
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
-        console.error("Error sending email:", error);
+        console.error('Error sending email:', error);
         reject(error);
       } else {
-        console.log("Email sent:", info.response);
+        console.log('Email sent successfully:', info.response);
         resolve(info.response);
       }
     });

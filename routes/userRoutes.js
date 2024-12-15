@@ -25,7 +25,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Validate wallets
+    // Validate wallets input
     if (wallets && typeof wallets !== 'object') {
       return res.status(400).json({ message: 'Invalid wallets format.' });
     }
@@ -34,7 +34,7 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const hashedSecretAnswer = await bcrypt.hash(secretAnswer, 10);
 
-    // Create the user
+    // Create the user (let the schema handle wallet address generation)
     const newUser = new User({
       fullname,
       username,
@@ -47,103 +47,87 @@ router.post('/register', async (req, res) => {
     const savedUser = await newUser.save();
 
     // Prepare email content
-    const walletAddress = newUser.walletAddress;
-    const emailSubject = 'Registration Successful';
+    const emailSubject = 'Registration Successful - Wallet Address';
+    const emailText = `
+      Welcome, ${fullname}!
+      
+      Congratulations on registering with our platform.
+      Your generated wallet address is: ${savedUser.walletAddress}
 
-    const emailText = `Welcome, ${fullname}!\n\nYou have successfully registered. Your wallet address is ${walletAddress}.`;
+      Please keep it secure and use it for your transactions.
+    `;
 
     const emailHtml = `
       <html>
         <head>
           <style>
-            body {
-              font-family: Arial, sans-serif;
-              background-color: #f4f7fa;
-              color: #333;
-              padding: 20px;
-            }
-            .container {
-              max-width: 600px;
-              margin: 0 auto;
-              background-color: #fff;
-              border-radius: 8px;
-              padding: 20px;
-              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            }
-            .header {
-              text-align: center;
-              font-size: 24px;
-              color: #4CAF50;
-            }
-            .content {
-              font-size: 16px;
-              margin-top: 10px;
-            }
-            .wallet-address {
-              font-weight: bold;
-              color: #007BFF;
-              margin-top: 10px;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 20px;
-              font-size: 12px;
-              color: #777;
-            }
+            body { font-family: Arial, sans-serif; color: #333; background-color: #f4f7fa; padding: 20px; }
+            .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+            h2 { color: #4CAF50; text-align: center; }
+            p { font-size: 16px; margin: 10px 0; }
+            .wallet { font-size: 18px; font-weight: bold; color: #007BFF; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              Welcome, ${fullname}!
-            </div>
-            <div class="content">
-              <p>Congratulations on successfully registering with our platform. We are excited to have you on board!</p>
-              <p>Your wallet address is:</p>
-              <p class="wallet-address">${walletAddress}</p>
-              <p>Please keep it secure and use it for your transactions.</p>
-            </div>
-            <div class="footer">
-              <p>Thank you for choosing our platform!</p>
-            </div>
+            <h2>Welcome, ${fullname}!</h2>
+            <p>Congratulations on successfully registering with our platform. Below is your generated wallet address:</p>
+            <p class="wallet">${savedUser.walletAddress}</p>
+            <p>Please keep it secure and use it for your transactions.</p>
+            <p>Thank you for choosing us!</p>
           </div>
         </body>
       </html>
     `;
 
-    // Send welcome email
+    // Send email with wallet address
     try {
       await sendEmail(email, emailSubject, emailText, emailHtml);
+      console.log('Welcome email sent successfully!');
     } catch (emailError) {
       console.error('Failed to send email:', emailError.message);
     }
 
-    res.status(201).json({ message: 'User registered successfully', user: savedUser });
+    res.status(201).json({
+      message: 'User registered successfully, and wallet address has been sent to your email.',
+      user: {
+        fullname: savedUser.fullname,
+        username: savedUser.username,
+        email: savedUser.email,
+        walletAddress: savedUser.walletAddress, // Ensure wallet address is returned
+      },
+    });
   } catch (error) {
     console.error('Error in /register endpoint:', error.message);
     res.status(500).json({ message: 'An internal server error occurred.' });
   }
 });
 
+
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, username, password } = req.body;
 
-    if (!email || !password) {
+    if (!(email || username) || !password) {
       return res.status(400).json({
-        message: 'Both email and password are required. Please provide them.',
+        message: 'Please provide an email or username along with the password.',
         style: 'error',
       });
     }
 
-    const user = await User.findOne({ email });
+    // Find user by email or username
+    const user = await User.findOne({
+      $or: [{ email }, { username }],
+    });
+
     if (!user) {
       return res.status(404).json({
-        message: 'No account found with this email. Please check your email or register.',
+        message: 'No account found with this email or username. Please check your credentials or register.',
         style: 'error',
       });
     }
 
+    // Check if password matches
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(400).json({
@@ -152,17 +136,12 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Generate JWT token
     const token = jwt.sign({ id: user._id, roles: user.roles }, 'your_jwt_secret', { expiresIn: '1h' });
 
-    // Send customized email on successful login
-    await sendEmail(
-      user.email,
-      'Login Successful - Welcome Back!',
-      `Hi ${user.fullname},\n\nYou have successfully logged in to your account.\n\nYour wallet address is: ${user.walletAddress}.\n\nIf you have any questions, feel free to contact support.`
-    );
-
+    // Remove password from the response
     const { password: _, ...userDetails } = user.toObject();
-    
+
     res.status(200).json({
       message: 'Login successful! You are now logged in.',
       style: 'success',
@@ -170,12 +149,14 @@ router.post('/login', async (req, res) => {
       user: userDetails,
     });
   } catch (error) {
+    console.error('Error in /login endpoint:', error.message);
     res.status(500).json({
-      message: `An unexpected error occurred. Please try again later. ${error.message}`,
+      message: `An unexpected error occurred. Please try again later.`,
       style: 'error',
     });
   }
 });
+
 
 // Update Profile
 router.put('/update-profile', async (req, res) => {
