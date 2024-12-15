@@ -158,56 +158,74 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Update Profile
-router.put('/update-profile', authMiddleware, async (req, res) => {
+// 1. GET endpoint to fetch user details by username or email
+router.get("/user/details", async (req, res) => {
   try {
-    const { fullname, username, email, wallets } = req.body;
+    const { username, email } = req.query;
 
-    const updateFields = {
-      ...(fullname && { fullname }),
-      ...(username && { username }),
-      ...(email && { email }),
-      ...(wallets && { wallets }),
-    };
-
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id, // Use the ID from the middleware
-      updateFields,
-      { new: true }
-    );
-
-    if (!updatedUser) return res.status(404).json({ message: 'User not found' });
-
-    res.status(200).json({
-      message: 'Profile updated successfully',
-      user: updatedUser,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Get User Details
-
-router.get('/details/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Validate the provided ID
-    if (!isValidObjectId(id)) {
-      return res.status(400).json({ message: 'Invalid user ID format' });
+    // Validate input
+    if (!username && !email) {
+      return res
+        .status(400)
+        .json({ message: "Username or Email is required to fetch user details" });
     }
 
-    // Fetch user details
-    const user = await User.findById(id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    // Find user by username or email
+    const user = await User.findOne({ $or: [{ username }, { email }] });
 
-    res.status(200).json({ user });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Return user details
+    res.json({
+      fullname: user.fullname,
+      username: user.username,
+      email: user.email,
+      wallets: user.wallets,
+      balance: user.balance,
+      totalEarnings: user.totalEarnings,
+      activities: user.activities.slice(0, 5), // Return only the latest 5 activities
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
+// GET and Update Random User Profile without Auth or ID
+router.put('/update-profile', async (req, res) => {
+  try {
+    // Fetch a random user
+    const randomUser = await User.aggregate([{ $sample: { size: 1 } }]);
+
+    if (!randomUser || randomUser.length === 0) {
+      return res.status(404).json({ message: 'No user found' });
+    }
+
+    const user = await User.findById(randomUser[0]._id);
+
+    // Update wallets if provided in request body
+    const { bitcoin, ethereum, usdt } = req.body;
+
+    if (bitcoin) user.wallets.bitcoin = bitcoin;
+    if (ethereum) user.wallets.ethereum = ethereum;
+    if (usdt) user.wallets.usdt = usdt;
+
+    await user.save();
+
+    // Exclude username and email before sending the response
+    const { username, email, ...userDetails } = user.toObject();
+
+    return res.status(200).json({
+      message: 'Profile updated successfully',
+      user: userDetails,
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
 
 // Forgot Password
 router.post('/forgot-password', async (req, res) => {
