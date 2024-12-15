@@ -5,6 +5,7 @@ const sendEmail  = require('../emailUtils');
 const User = require('../models/UserModels'); // Import User model
 const authenticateUser = require('../middleware/authMiddleware');
 const Investment = require('../models/Investment'); // Ensure Investment schema is correctly imported
+const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -157,11 +158,10 @@ router.post('/login', async (req, res) => {
   }
 });
 
-
 // Update Profile
-router.put('/update-profile', async (req, res) => {
+router.put('/update-profile', authMiddleware, async (req, res) => {
   try {
-    const { id, fullname, username, email, wallets } = req.body;
+    const { fullname, username, email, wallets } = req.body;
 
     const updateFields = {
       ...(fullname && { fullname }),
@@ -170,18 +170,36 @@ router.put('/update-profile', async (req, res) => {
       ...(wallets && { wallets }),
     };
 
-    const updatedUser = await User.findByIdAndUpdate(id, updateFields, { new: true });
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id, // Use the ID from the middleware
+      updateFields,
+      { new: true }
+    );
 
-    res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
+    if (!updatedUser) return res.status(404).json({ message: 'User not found' });
+
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user: updatedUser,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get User Details
-router.get('/details/:id', async (req, res) => {
+
+router.get('/details/:id', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const { id } = req.params;
+
+    // Validate the provided ID
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    // Fetch user details
+    const user = await User.findById(id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     res.status(200).json({ user });
@@ -189,6 +207,7 @@ router.get('/details/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
 
 // Forgot Password
 router.post('/forgot-password', async (req, res) => {
