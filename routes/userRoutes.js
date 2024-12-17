@@ -193,38 +193,34 @@ router.get("/user/details", async (req, res) => {
   }
 });
 
-// Endpoint: Update wallet details for logged-in user
-router.put('/update-profile', authenticateUser, async (req, res) => {
-  const { bitcoin, ethereum, usdt } = req.body;
-
+// PUT: Update user details
+router.put('/update', authMiddleware, async (req, res) => {
   try {
+    const { fullname, username, email, wallets, security } = req.body;
+
     // Ensure the user is authenticated
-    const userId = req.user._id; // Get the user ID from the token
+    const userId = req.user.id; // Assuming the auth middleware attaches user info
 
-    // Find the user and update their wallet details
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          "wallets.bitcoin": bitcoin,
-          "wallets.ethereum": ethereum,
-          "wallets.usdt": usdt,
-        },
-      },
-      { new: true } // Return the updated user document
-    );
-
+    // Find the user by ID
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    return res.status(200).json({
-      message: 'Profile updated successfully',
-      user, // Return the updated user details
-    });
-  } catch (error) {
-    console.error('Error updating wallet:', error.message);
-    return res.status(500).json({ message: 'Internal server error' });
+    // Update the user fields if they are provided
+    if (fullname) user.fullname = fullname;
+    if (username) user.username = username;
+    if (email) user.email = email;
+    if (wallets) user.wallets = wallets; // Wallet addresses can be updated
+    if (security) user.security = security; // Update secret question/answer
+
+    // Save the updated user
+    await user.save();
+
+    res.status(200).json({ message: 'User details updated successfully', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -558,43 +554,40 @@ router.post('/invest', async (req, res) => {
     }
   });
 
-// Endpoint: Get user history by username
-router.get('/user/history/:username', async (req, res) => {
-  const { username } = req.params;
-
-  try {
-    // Find the user by username
-    const user = await User.findOne({ username });
-
-    // Check if user exists
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+  router.get('/user/history/:username', async (req, res) => {
+    const { username } = req.params;
+    console.log("Received username:", username); // Log the username to check the parameter value
+  
+    try {
+      const user = await User.findOne({ username });
+  
+      if (!user) {
+        console.log("User not found:", username); // Log if user is not found
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      // Extract user history data
+      const history = {
+        fullname: user.fullname,
+        username: user.username,
+        email: user.email, // Include email
+        balance: user.getBalance(),
+        deposits: user.deposits,
+        withdrawals: user.withdrawals,
+        activities: user.activities,
+        totalEarnings: user.getTotalEarnings(),
+      };
+  
+      return res.status(200).json({
+        message: 'User history fetched successfully',
+        history,
+      });
+    } catch (error) {
+      console.error('Error fetching user history:', error.message);
+      return res.status(500).json({ message: 'Internal server error' });
     }
-
-    // Extract user history data
-    const history = {
-      fullname: user.fullname,
-      username: user.username,
-      email: user.email, // Include email in the response
-      balance: user.getBalance(),
-      deposits: user.deposits,
-      withdrawals: user.withdrawals,
-      activities: user.activities,
-      totalEarnings: user.getTotalEarnings(),
-    };
-
-    // Return the user's history
-    return res.status(200).json({
-      message: 'User history fetched successfully',
-      history,
-    });
-  } catch (error) {
-    console.error('Error fetching user history:', error.message);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-
+  });
+  
 // Middleware to fetch user by username
 const getUser = async (req, res, next) => {
   try {
