@@ -575,6 +575,7 @@ router.get('/user/history/:username', async (req, res) => {
     const history = {
       fullname: user.fullname,
       username: user.username,
+      email: user.email, // Include email in the response
       balance: user.getBalance(),
       deposits: user.deposits,
       withdrawals: user.withdrawals,
@@ -592,6 +593,7 @@ router.get('/user/history/:username', async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
+
 
 // Middleware to fetch user by username
 const getUser = async (req, res, next) => {
