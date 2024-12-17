@@ -6,6 +6,7 @@ const User = require('../models/UserModels'); // Import User model
 const authenticateUser = require('../middleware/authMiddleware');
 const Investment = require('../models/Investment'); // Ensure Investment schema is correctly imported
 const authMiddleware = require('../middleware/authMiddleware');
+const Wallet = require('../models/UserWalletSchema')
 
 const router = express.Router();
 
@@ -764,4 +765,100 @@ router.delete('/admin/users/:userId', async (req, res) => {
   }
 });
 
+// POST endpoint to save or update wallet addresses
+router.post("/api/wallets", async (req, res) => {
+  try {
+    const { email, bitcoinAddress, ethereumAddress, usdtAddress } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    // Find user by email
+    let user = await Wallet.findOne({ email });
+
+    if (!user) {
+      // Create a new record if user doesn't exist
+      user = new Wallet({
+        email,
+        bitcoinAddress: bitcoinAddress || null,
+        ethereumAddress: ethereumAddress || null,
+        usdtAddress: usdtAddress || null
+      });
+      await user.save();
+      return res.status(201).json({
+        message: "Wallet details saved successfully.",
+        data: user
+      });
+    }
+
+    // Update existing user details
+    user.bitcoinAddress = bitcoinAddress || user.bitcoinAddress;
+    user.ethereumAddress = ethereumAddress || user.ethereumAddress;
+    user.usdtAddress = usdtAddress || user.usdtAddress;
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Wallet details updated successfully.",
+      data: user
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error occurred." });
+  }
+});
+
+// GET endpoint to retrieve wallet details by email
+router.get("/api/wallets/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const user = await Wallet.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    return res.status(200).json({
+      message: "Wallet details retrieved successfully.",
+      data: user
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error occurred." });
+  }
+});
+
+// Endpoint to get user wallet details by email
+router.get("/api/wallets", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({ message: "User email is required." });
+    }
+
+    // Fetch user wallet details
+    const user = await Wallet.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User wallet details not found." });
+    }
+
+    return res.status(200).json({
+      message: "User wallet details retrieved successfully.",
+      data: {
+        email: user.email,
+        bitcoinAddress: user.bitcoinAddress,
+        ethereumAddress: user.ethereumAddress,
+        usdtAddress: user.usdtAddress,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error occurred." });
+  }
+});
 module.exports = router;
