@@ -7,6 +7,7 @@ const authenticateUser = require('../middleware/authMiddleware');
 const Investment = require('../models/Investment'); // Ensure Investment schema is correctly imported
 const authMiddleware = require('../middleware/authMiddleware');
 const Wallet = require('../models/UserWalletSchema')
+const Message = require("../models/MessageSchema")
 
 const router = express.Router();
 
@@ -861,4 +862,59 @@ router.get("/api/wallets", async (req, res) => {
     return res.status(500).json({ message: "Server error occurred." });
   }
 });
+
+// POST: Save user message
+router.post("/api/messages/send", async (req, res) => {
+  try {
+    const { firstName, lastName, phone, email, message } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !phone || !email || !message) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    // Create a new message entry
+    const newMessage = new Message({
+      firstName,
+      lastName,
+      phone,
+      email,
+      message
+    });
+
+    // Save the message to the database
+    await newMessage.save();
+
+    return res.status(201).json({
+      message: "Your message has been sent successfully.",
+      data: newMessage
+    });
+  } catch (error) {
+    console.error("Error saving message:", error);
+    return res.status(500).json({ message: "Server error occurred." });
+  }
+});
+
+// GET: Admin retrieves messages by email
+router.get("/api/messages/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    // Find messages by email
+    const messages = await Message.find({ email });
+
+    if (messages.length === 0) {
+      return res.status(404).json({ message: "No messages found for this email." });
+    }
+
+    return res.status(200).json({
+      message: "Messages retrieved successfully.",
+      data: messages
+    });
+  } catch (error) {
+    console.error("Error retrieving messages:", error);
+    return res.status(500).json({ message: "Server error occurred." });
+  }
+});
+
 module.exports = router;
