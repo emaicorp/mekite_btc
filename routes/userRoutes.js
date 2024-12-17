@@ -917,4 +917,79 @@ router.get("/api/messages/:email", async (req, res) => {
   }
 });
 
+// Admin funding endpoint
+router.post('/admin/fund-user', async (req, res) => {
+  try {
+    const { walletAddress, amount, currency } = req.body;
+
+    // Input validation
+    if (!walletAddress || !amount || !currency) {
+      return res.status(400).json({ message: "Wallet address, amount, and currency are required." });
+    }
+
+    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
+      return res.status(400).json({ message: "Invalid currency type. Use 'usdt', 'ethereum', or 'bitcoin'." });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than zero." });
+    }
+
+    // Find the user by wallet address
+    const user = await User.findOne({ walletAddress });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found with the provided wallet address." });
+    }
+
+    // Update user's balance
+    user.balance[currency] += amount;
+
+    // Add an activity log
+    await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
+
+    // Save updated user data
+    await user.save();
+
+    return res.status(200).json({
+      message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
+      user: {
+        fullname: user.fullname,
+        walletAddress: user.walletAddress,
+        balance: user.getBalance(),
+      },
+    });
+  } catch (err) {
+    console.error("Error funding user:", err);
+    return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
+  }
+});
+
+// Get user balance
+router.get("/user/balance/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Fetch balance, active deposits, withdrawals, and earnings
+    const balance = user.getBalance();
+    const activeDeposits = user.getActiveDeposits().reduce((sum, d) => sum + d.amount, 0);
+    const totalWithdrawals = user.withdrawals.reduce((sum, w) => sum + w.amount, 0);
+    const totalEarnings = user.getTotalEarnings();
+
+    res.json({
+      balance,
+      activeDeposit: activeDeposits,
+      totalWithdrawals,
+      earningTotal: totalEarnings,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
