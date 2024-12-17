@@ -193,37 +193,38 @@ router.get("/user/details", async (req, res) => {
   }
 });
 
-// GET and Update Random User Profile without Auth or ID
-router.put('/update-profile', async (req, res) => {
+// Endpoint: Update wallet details for logged-in user
+router.put('/update-profile', authenticateUser, async (req, res) => {
+  const { bitcoin, ethereum, usdt } = req.body;
+
   try {
-    // Fetch a random user
-    const randomUser = await User.aggregate([{ $sample: { size: 1 } }]);
+    // Ensure the user is authenticated
+    const userId = req.user._id; // Get the user ID from the token
 
-    if (!randomUser || randomUser.length === 0) {
-      return res.status(404).json({ message: 'No user found' });
+    // Find the user and update their wallet details
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          "wallets.bitcoin": bitcoin,
+          "wallets.ethereum": ethereum,
+          "wallets.usdt": usdt,
+        },
+      },
+      { new: true } // Return the updated user document
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
-
-    const user = await User.findById(randomUser[0]._id);
-
-    // Update wallets if provided in request body
-    const { bitcoin, ethereum, usdt } = req.body;
-
-    if (bitcoin) user.wallets.bitcoin = bitcoin;
-    if (ethereum) user.wallets.ethereum = ethereum;
-    if (usdt) user.wallets.usdt = usdt;
-
-    await user.save();
-
-    // Exclude username and email before sending the response
-    const { username, email, ...userDetails } = user.toObject();
 
     return res.status(200).json({
       message: 'Profile updated successfully',
-      user: userDetails,
+      user, // Return the updated user details
     });
   } catch (error) {
-    console.error('Error updating profile:', error.message);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    console.error('Error updating wallet:', error.message);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -698,6 +699,40 @@ router.get('/admin/users', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'An error occurred while retrieving users',
+      error: error.message,
+    });
+  }
+});
+
+// Endpoint to delete a specific user by user ID
+router.delete('/admin/users/:userId', async (req, res) => {
+  try {
+    // Extract the userId from the request params
+    const { userId } = req.params;
+
+    // Check if the user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Delete the user
+    await user.remove();
+
+    // Send success response
+    return res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
+    });
+  } catch (error) {
+    // Handle any errors
+    console.error('Error deleting user:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred while deleting the user',
       error: error.message,
     });
   }
