@@ -592,5 +592,115 @@ router.get('/user/history/:username', async (req, res) => {
   }
 });
 
+// Middleware to fetch user by username
+const getUser = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ username: req.params.username });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    req.user = user;
+    next();
+  } catch (err) {
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+};
+
+// Helper function for amount validation
+const validateAmount = (amount) => {
+  return typeof amount === 'number' && amount > 0;
+};
+
+// Mock conversion rates for currency
+const currencyRates = {
+  usdt: 1,
+  ethereum: 2500, // 1 ETH = $2500
+  bitcoin: 30000, // 1 BTC = $30,000
+};
+
+// POST: Add or reinvest in an investment plan
+router.post('/:username/invest', getUser, async (req, res) => {
+  const { plan, amount, currency } = req.body;
+
+  // Input Validation
+  if (!['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'].includes(plan)) {
+    return res.status(400).json({ message: 'Invalid investment plan' });
+  }
+
+  if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
+    return res.status(400).json({ message: 'Invalid currency' });
+  }
+
+  if (!validateAmount(amount)) {
+    return res.status(400).json({ message: 'Amount must be a positive number' });
+  }
+
+  // Optional: Define minimum investment amounts for plans
+  const minInvestment = {
+    STARTER: 50,
+    'CRYPTO PLAN': 100,
+    'ADVANCED PLAN': 200,
+    'PAY PLAN': 500,
+    'PREMIUM PLAN': 1000,
+  };
+
+  if (amount < minInvestment[plan]) {
+    return res.status(400).json({
+      message: `Minimum investment for ${plan} is ${minInvestment[plan]} USD`,
+    });
+  }
+
+  try {
+    // Convert the amount to USD using currency rates (if not in USDT)
+    const amountInUSD = amount * currencyRates[currency];
+
+    // Add or reinvest in the plan
+    await req.user.addOrReinvestInvestment(plan, amountInUSD, currency);
+
+    // Calculate the total investment amount
+    const totalInvestment = req.user.investments.reduce((total, inv) => total + inv.amount, 0);
+
+    res.status(201).json({
+      message: `Investment in ${plan} updated successfully`,
+      investments: req.user.investments,
+      totalInvestment: `${totalInvestment} USD`,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Investment failed: ' + err.message });
+  }
+});
+
+// GET: Fetch user investments
+router.get('/:username/investments', getUser, (req, res) => {
+  const totalInvestment = req.user.investments.reduce((total, inv) => total + inv.amount, 0);
+  res.status(200).json({
+    investments: req.user.investments,
+    totalInvestment: `${totalInvestment} USD`,
+  });
+});
+
+
+// admin
+// GET endpoint to retrieve all users
+router.get('/admin/users', async (req, res) => {
+  try {
+    // Fetch all users and populate all details
+    const users = await User.find();
+
+    // Send the user data as a response
+    return res.status(200).json({
+      success: true,
+      message: 'All users retrieved successfully',
+      data: users,
+    });
+  } catch (error) {
+    // Handle any errors
+    console.error('Error fetching users:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred while retrieving users',
+      error: error.message,
+    });
+  }
+});
 
 module.exports = router;

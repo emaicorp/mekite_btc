@@ -22,6 +22,14 @@ const ActivitySchema = new Schema({
   timestamp: { type: Date, default: Date.now }, // Time of the activity
 });
 
+const InvestmentSchema = new mongoose.Schema({
+  plan: { type: String, enum: ['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'], required: true },
+  amount: { type: Number, required: true },
+  currency: { type: String, enum: ['usdt', 'ethereum', 'bitcoin'], required: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
+
 const UserSchema = new Schema({
   fullname: { type: String, required: true },
   username: { type: String, required: true, unique: true },
@@ -48,6 +56,7 @@ const UserSchema = new Schema({
 
   deposits: [DepositSchema], // New deposits field to track user deposits
   withdrawals: [WithdrawalSchema], // New field to track withdrawals
+  investments: [InvestmentSchema], // Add investments array to track user investments
 
     activities: { type: [ActivitySchema], default: [] }, // Define and initialize
 
@@ -151,6 +160,21 @@ UserSchema.methods.processWithdrawal = function (withdrawalId, status) {
     this.balance[withdrawal.currency] += withdrawal.amount;
   }
 
+  return this.save();
+};
+
+
+// Method to add or reinvest in a plan
+UserSchema.methods.addOrReinvestInvestment = function (plan, amount, currency) {
+  const investment = this.investments.find((inv) => inv.plan === plan && inv.currency === currency);
+  
+  if (investment) {
+    // Reinvest into existing plan
+    investment.amount += amount;
+  } else {
+    // Add a new investment
+    this.investments.push({ plan, amount, currency });
+  }
   return this.save();
 };
 module.exports = mongoose.model('User', UserSchema);
