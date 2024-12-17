@@ -679,6 +679,37 @@ router.get('/:username/investments', getUser, (req, res) => {
   });
 });
 
+// Endpoint: Update user wallet by username
+router.put('/user/update-wallet/:username', async (req, res) => {
+  const { username } = req.params;
+  const { bitcoin, ethereum, usdt } = req.body;
+
+  try {
+    // Find the user by username
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update wallet addresses
+    user.wallets.bitcoin = bitcoin || user.wallets.bitcoin;
+    user.wallets.ethereum = ethereum || user.wallets.ethereum;
+    user.wallets.usdt = usdt || user.wallets.usdt;
+
+    // Save the updated user data
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Wallet updated successfully',
+      user,
+    });
+  } catch (error) {
+    console.error('Error updating wallet:', error.message);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 
 // admin
 // GET endpoint to retrieve all users
