@@ -9,7 +9,7 @@ const AdminSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-// Pre-save middleware to hash the password
+// Pre-save middleware to hash the passwor
 AdminSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
     this.password = await bcrypt.hash(this.password, 10);

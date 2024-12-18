@@ -12,12 +12,16 @@ const sendEmail = (to, subject, text, html) => {
       },
     });
 
+    if (!text && !html) {
+      return reject(new Error("Either text or html content must be provided for the email"));
+    }
+
     const mailOptions = {
       from: `"Central National Bank" <${process.env.EMAIL_USER}>`, // Sender address
       to, // Receiver address
       subject, // Subject line
-      text, // Plaintext body
-      html, // HTML body
+      text, // Plaintext body (fallback)
+      html, // HTML body (preferred)
     };
 
     console.log('Sending email to:', to);
