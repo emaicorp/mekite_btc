@@ -920,6 +920,54 @@ router.get("/api/messages/:email", async (req, res) => {
 });
 
 // Admin funding endpoint
+// router.post('/admin/fund-user', async (req, res) => {
+//   try {
+//     const { walletAddress, amount, currency } = req.body;
+
+//     // Input validation
+//     if (!walletAddress || !amount || !currency) {
+//       return res.status(400).json({ message: "Wallet address, amount, and currency are required." });
+//     }
+
+//     if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
+//       return res.status(400).json({ message: "Invalid currency type. Use 'usdt', 'ethereum', or 'bitcoin'." });
+//     }
+
+//     if (amount <= 0) {
+//       return res.status(400).json({ message: "Amount must be greater than zero." });
+//     }
+
+//     // Find the user by wallet address
+//     const user = await User.findOne({ walletAddress });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found with the provided wallet address." });
+//     }
+
+//     // Update user's balance
+//     user.balance[currency] += amount;
+
+//     // Add an activity log
+//     await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
+
+//     // Save updated user data
+//     await user.save();
+
+//     return res.status(200).json({
+//       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
+//       user: {
+//         fullname: user.fullname,
+//         walletAddress: user.walletAddress,
+//         balance: user.getBalance(),
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Error funding user:", err);
+//     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
+//   }
+// });
+
+// Admin funding endpoint
 router.post('/admin/fund-user', async (req, res) => {
   try {
     const { walletAddress, amount, currency } = req.body;
@@ -952,6 +1000,31 @@ router.post('/admin/fund-user', async (req, res) => {
 
     // Save updated user data
     await user.save();
+
+    // Sending email notification to the user
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,  // replace with your email
+        pass: process.env.EMAIL_PASS     // replace with your email password
+      }
+    });
+
+    const mailOptions = {
+      from: `"Bit Flux Capital" <${process.env.EMAIL_USER}>`,
+      to: user.email,                 // user's email
+      subject: 'Funds Deposited',
+      text: `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+        return res.status(500).json({ message: "Error sending email notification.", error: error.message });
+      } else {
+        console.log('Email sent: ' + info.response);
+      }
+    });
 
     return res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
