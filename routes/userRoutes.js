@@ -1214,4 +1214,67 @@ router.post("/admin/deposits/:depositId/approve", async (req, res) => {
   }
 });
 
+// User Endpoint to request a withdrawal
+router.post("/user/withdraw", async (req, res) => {
+  const { currency, amount } = req.body; // Currency (usdt, ethereum, bitcoin) and Amount to withdraw
+  const userId = req.user.id; // Get user ID from authenticated session or token
+  
+  try {
+    // Validate the currency
+    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
+      return res.status(400).json({ message: "Invalid currency. Supported currencies are usdt, ethereum, bitcoin." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    // Check if the user has enough balance
+    if (user.balance[currency] < amount) {
+      return res.status(400).json({ message: `Insufficient ${currency} balance.` });
+    }
+
+    // Request withdrawal
+    await user.requestWithdrawal(currency, amount);
+
+    return res.status(200).json({ message: `${amount} ${currency} withdrawal requested successfully.` });
+  } catch (error) {
+    console.error("Error requesting withdrawal:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
+
+// Admin Endpoint to approve or reject a withdrawal request
+router.post("/admin/withdraw/:withdrawalId", async (req, res) => {
+  const { withdrawalId } = req.params; // Withdrawal request ID
+  const { status } = req.body; // Status can be 'completed' or 'rejected'
+
+  try {
+    // Validate status
+    if (!['completed', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Use 'completed' or 'rejected'." });
+    }
+
+    // Find the user who made the withdrawal request
+    const user = await User.findOne({ "withdrawals._id": withdrawalId });
+    if (!user) {
+      return res.status(404).json({ message: "Withdrawal not found." });
+    }
+
+    // Find the specific withdrawal
+    const withdrawal = user.withdrawals.id(withdrawalId);
+    if (!withdrawal) {
+      return res.status(404).json({ message: "Withdrawal not found." });
+    }
+
+    // Process the withdrawal based on status
+    await user.processWithdrawal(withdrawalId, status);
+
+    return res.status(200).json({ message: `Withdrawal ${status} successfully.` });
+  } catch (error) {
+    console.error("Error approving/rejecting withdrawal:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
 module.exports = router;
