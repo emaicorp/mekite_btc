@@ -1053,4 +1053,165 @@ router.get("/user/balance/:userId", async (req, res) => {
   }
 });
 
+
+// Endpoint for users to fund their account
+router.post("/fund", async (req, res) => {
+  const { walletAddress, amount, currency } = req.body;
+
+  try {
+    // Validate the request
+    if (!walletAddress || !amount || !currency) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    // Find the user by wallet address
+    const user = await User.findOne({ walletAddress });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found with the given wallet address." });
+    }
+
+    // Create a new deposit request
+    const newDeposit = {
+      amount,
+      currency,
+      status: "active", // Start as pending admin approval
+    };
+
+    user.deposits.push(newDeposit);
+
+    // Log the activity
+    await user.addActivity(`Created a funding request for ${amount} ${currency}`);
+
+    // Save the user with the new deposit
+    await user.save();
+
+    return res.status(201).json({ message: "Funding request created successfully." });
+  } catch (error) {
+    console.error("Error creating funding request:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
+
+// // Endpoint for admin to approve funding
+// router.post("/approve-fund", async (req, res) => {
+//   const { depositId, walletAddress } = req.body;
+
+//   try {
+//     // Validate the request
+//     if (!depositId || !walletAddress) {
+//       return res.status(400).json({ message: "Deposit ID and wallet address are required." });
+//     }
+
+//     // Find the user by wallet address
+//     const user = await User.findOne({ walletAddress });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found with the given wallet address." });
+//     }
+
+//     // Find the deposit
+//     const deposit = user.deposits.id(depositId);
+
+//     if (!deposit || deposit.status !== "active") {
+//       return res.status(404).json({ message: "Deposit not found or already processed." });
+//     }
+
+//     // Approve the deposit
+//     deposit.status = "completed";
+//     user.balance[deposit.currency] += deposit.amount; // Update the user's balance
+
+//     // Log the activity
+//     await user.addActivity(
+//       `Admin approved funding of ${deposit.amount} ${deposit.currency}`
+//     );
+
+//     // Save the user
+//     await user.save();
+
+//     return res.status(200).json({ message: "Funding approved successfully." });
+//   } catch (error) {
+//     console.error("Error approving funding:", error);
+//     return res.status(500).json({ message: "An error occurred. Please try again later." });
+//   }
+// });
+
+// Endpoint to get all pending deposits for admin approval
+router.get("/admin/deposits/pending", async (req, res) => {
+  try {
+    // Fetch all users with pending deposits
+    const users = await User.find({ "deposits.status": "active" });
+
+    // Extract pending deposits with user details
+    const pendingDeposits = users.flatMap((user) =>
+      user.deposits
+        .filter((deposit) => deposit.status === "active")
+        .map((deposit) => ({
+          userId: user._id,
+          username: user.username,
+          email: user.email,
+          walletAddress: user.walletAddress,
+          depositId: deposit._id,
+          amount: deposit.amount,
+          currency: deposit.currency,
+          createdAt: deposit.createdAt,
+        }))
+    );
+
+    return res.status(200).json({ pendingDeposits });
+  } catch (error) {
+    console.error("Error fetching pending deposits:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
+
+// Endpoint to approve or reject a deposit
+router.post("/admin/deposits/:depositId/approve", async (req, res) => {
+  const { depositId } = req.params;
+  const { status } = req.body; // `completed` or `cancelled`
+
+  try {
+    // Validate status
+    if (!["completed", "cancelled"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Use 'completed' or 'cancelled'." });
+    }
+
+    // Find the user with the deposit
+    const user = await User.findOne({ "deposits._id": depositId });
+
+    if (!user) {
+      return res.status(404).json({ message: "Deposit not found." });
+    }
+
+    // Find the specific deposit
+    const deposit = user.deposits.id(depositId);
+
+    if (!deposit) {
+      return res.status(404).json({ message: "Deposit not found." });
+    }
+
+    // Update the deposit status
+    deposit.status = status;
+
+    // If approved, update the user's balance
+    if (status === "completed") {
+      user.balance[deposit.currency] += deposit.amount;
+
+      // Log the activity
+      await user.addActivity(`Admin approved deposit of ${deposit.amount} ${deposit.currency}.`);
+    } else {
+      // Log the rejection
+      await user.addActivity(`Admin rejected deposit of ${deposit.amount} ${deposit.currency}.`);
+    }
+
+    // Save the user with the updated deposit
+    await user.save();
+
+    return res.status(200).json({ message: `Deposit ${status} successfully.` });
+  } catch (error) {
+    console.error("Error approving/rejecting deposit:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
+
 module.exports = router;
