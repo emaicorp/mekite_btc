@@ -984,7 +984,6 @@ router.post('/admin/fund-user', async (req, res) => {
       return res.status(400).json({ message: "Amount must be greater than zero." });
     }
     
-
     // Find the user by wallet address
     const user = await User.findOne({ walletAddress });
 
