@@ -983,15 +983,23 @@ router.post('/admin/fund-user', async (req, res) => {
     if (amount <= 0) {
       return res.status(400).json({ message: "Amount must be greater than zero." });
     }
-    
+
+    // Validate custom wallet address format
+    const isValidWallet = /^[a-z0-9]{32}$/.test(walletAddress);
+    if (!isValidWallet) {
+      return res.status(400).json({ message: "Invalid custom wallet address format." });
+    }
+
     // Find the user by wallet address
     const user = await User.findOne({ walletAddress });
-
     if (!user) {
       return res.status(404).json({ message: "User not found with the provided wallet address." });
     }
 
-    // Update user's balance
+    // Validate and update user's balance
+    if (!user.balance || typeof user.balance[currency] !== 'number') {
+      return res.status(400).json({ message: "User's balance structure is invalid or incomplete." });
+    }
     user.balance[currency] += amount;
 
     // Add an activity log
@@ -1000,7 +1008,7 @@ router.post('/admin/fund-user', async (req, res) => {
     // Save updated user data
     await user.save();
 
-    // Send the response to the client immediately
+    // Send the response to the client
     res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
       user: {
@@ -1012,13 +1020,19 @@ router.post('/admin/fund-user', async (req, res) => {
 
     // Prepare email details
     const emailSubject = 'Funds Deposited';
-    const emailText = `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`;
-    const emailHtml = `<p>Dear ${user.fullname},</p><p>Your account has been credited with <strong>${amount} ${currency.toUpperCase()}</strong>.</p><p>Thank you,<br>Admin</p>`;
+    const emailHtml = `
+      <p>Dear ${user.fullname},</p>
+      <p>Your account has been credited with <strong>${amount} ${currency.toUpperCase()}</strong>.</p>
+      <p>Thank you,<br>Admin</p>
+    `;
 
-    // Send email notification asynchronously
-    sendEmail(user.email, emailSubject, emailText, emailHtml)
-      .then(response => console.log("Email sent:", response))
-      .catch(error => console.error("Email sending failed:", error));
+    // Send email notification
+    try {
+      await sendEmail(user.email, emailSubject, "", emailHtml);
+      console.log("Email sent successfully.");
+    } catch (emailError) {
+      console.error("Failed to send email notification:", emailError);
+    }
 
   } catch (err) {
     console.error("Error funding user:", err);
@@ -1093,48 +1107,48 @@ router.post("/fund", async (req, res) => {
   }
 });
 
-// // Endpoint for admin to approve funding
-// router.post("/approve-fund", async (req, res) => {
-//   const { depositId, walletAddress } = req.body;
+// Endpoint for admin to approve funding
+router.post("/approve-fund", async (req, res) => {
+  const { depositId, walletAddress } = req.body;
 
-//   try {
-//     // Validate the request
-//     if (!depositId || !walletAddress) {
-//       return res.status(400).json({ message: "Deposit ID and wallet address are required." });
-//     }
+  try {
+    // Validate the request
+    if (!depositId || !walletAddress) {
+      return res.status(400).json({ message: "Deposit ID and wallet address are required." });
+    }
 
-//     // Find the user by wallet address
-//     const user = await User.findOne({ walletAddress });
+    // Find the user by wallet address
+    const user = await User.findOne({ walletAddress });
 
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found with the given wallet address." });
-//     }
+    if (!user) {
+      return res.status(404).json({ message: "User not found with the given wallet address." });
+    }
 
-//     // Find the deposit
-//     const deposit = user.deposits.id(depositId);
+    // Find the deposit
+    const deposit = user.deposits.id(depositId);
 
-//     if (!deposit || deposit.status !== "active") {
-//       return res.status(404).json({ message: "Deposit not found or already processed." });
-//     }
+    if (!deposit || deposit.status !== "active") {
+      return res.status(404).json({ message: "Deposit not found or already processed." });
+    }
 
-//     // Approve the deposit
-//     deposit.status = "completed";
-//     user.balance[deposit.currency] += deposit.amount; // Update the user's balance
+    // Approve the deposit
+    deposit.status = "completed";
+    user.balance[deposit.currency] += deposit.amount; // Update the user's balance
 
-//     // Log the activity
-//     await user.addActivity(
-//       `Admin approved funding of ${deposit.amount} ${deposit.currency}`
-//     );
+    // Log the activity
+    await user.addActivity(
+      `Admin approved funding of ${deposit.amount} ${deposit.currency}`
+    );
 
-//     // Save the user
-//     await user.save();
+    // Save the user
+    await user.save();
 
-//     return res.status(200).json({ message: "Funding approved successfully." });
-//   } catch (error) {
-//     console.error("Error approving funding:", error);
-//     return res.status(500).json({ message: "An error occurred. Please try again later." });
-//   }
-// });
+    return res.status(200).json({ message: "Funding approved successfully." });
+  } catch (error) {
+    console.error("Error approving funding:", error);
+    return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
 
 // Endpoint to get all pending deposits for admin approval
 router.get("/admin/deposits/pending", async (req, res) => {
@@ -1214,67 +1228,4 @@ router.post("/admin/deposits/:depositId/approve", async (req, res) => {
   }
 });
 
-// User Endpoint to request a withdrawal
-router.post("/user/withdraw", async (req, res) => {
-  const { currency, amount } = req.body; // Currency (usdt, ethereum, bitcoin) and Amount to withdraw
-  const userId = req.user.id; // Get user ID from authenticated session or token
-  
-  try {
-    // Validate the currency
-    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-      return res.status(400).json({ message: "Invalid currency. Supported currencies are usdt, ethereum, bitcoin." });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    // Check if the user has enough balance
-    if (user.balance[currency] < amount) {
-      return res.status(400).json({ message: `Insufficient ${currency} balance.` });
-    }
-
-    // Request withdrawal
-    await user.requestWithdrawal(currency, amount);
-
-    return res.status(200).json({ message: `${amount} ${currency} withdrawal requested successfully.` });
-  } catch (error) {
-    console.error("Error requesting withdrawal:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
-
-// Admin Endpoint to approve or reject a withdrawal request
-router.post("/admin/withdraw/:withdrawalId", async (req, res) => {
-  const { withdrawalId } = req.params; // Withdrawal request ID
-  const { status } = req.body; // Status can be 'completed' or 'rejected'
-
-  try {
-    // Validate status
-    if (!['completed', 'rejected'].includes(status)) {
-      return res.status(400).json({ message: "Invalid status. Use 'completed' or 'rejected'." });
-    }
-
-    // Find the user who made the withdrawal request
-    const user = await User.findOne({ "withdrawals._id": withdrawalId });
-    if (!user) {
-      return res.status(404).json({ message: "Withdrawal not found." });
-    }
-
-    // Find the specific withdrawal
-    const withdrawal = user.withdrawals.id(withdrawalId);
-    if (!withdrawal) {
-      return res.status(404).json({ message: "Withdrawal not found." });
-    }
-
-    // Process the withdrawal based on status
-    await user.processWithdrawal(withdrawalId, status);
-
-    return res.status(200).json({ message: `Withdrawal ${status} successfully.` });
-  } catch (error) {
-    console.error("Error approving/rejecting withdrawal:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
 module.exports = router;
