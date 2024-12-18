@@ -1001,7 +1001,7 @@ router.post('/admin/fund-user', async (req, res) => {
     // Save updated user data
     await user.save();
 
-    // Sending email notification to the user
+    // Sending email notification to the user (send after response)
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -1012,21 +1012,13 @@ router.post('/admin/fund-user', async (req, res) => {
 
     const mailOptions = {
       from: `"Bit Flux Capital" <${process.env.EMAIL_USER}>`,
-      to: user.email,                 // user's email
+      to: user.email, // user's email
       subject: 'Funds Deposited',
       text: `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`
     };
 
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error("Error sending email:", error);
-        return res.status(500).json({ message: "Error sending email notification.", error: error.message });
-      } else {
-        console.log('Email sent: ' + info.response);
-      }
-    });
-
-    return res.status(200).json({
+    // Send the response to the client before sending the email
+    res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
       user: {
         fullname: user.fullname,
@@ -1034,11 +1026,22 @@ router.post('/admin/fund-user', async (req, res) => {
         balance: user.getBalance(),
       },
     });
+
+    // Send the email asynchronously without blocking the response
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log('Email sent: ' + info.response);
+      }
+    });
+
   } catch (err) {
     console.error("Error funding user:", err);
     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
   }
 });
+
 
 // Get user balance
 router.get("/user/balance/:userId", async (req, res) => {
