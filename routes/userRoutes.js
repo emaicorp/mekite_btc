@@ -1,8 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer')
-const path = require('path'); // For referencing image file paths
+// const nodemailer = require('nodemailer')
+// const path = require('path'); // For referencing image file paths
 const sendEmail  = require('../emailUtils');
 const User = require('../models/UserModels'); // Import User model
 const authenticateUser = require('../middleware/authMiddleware');
