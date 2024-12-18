@@ -919,54 +919,7 @@ router.get("/api/messages/:email", async (req, res) => {
   }
 });
 
-// // Admin funding endpoint
-// router.post('/admin/fund-user', async (req, res) => {
-//   try {
-//     const { walletAddress, amount, currency } = req.body;
-
-//     // Input validation
-//     if (!walletAddress || !amount || !currency) {
-//       return res.status(400).json({ message: "Wallet address, amount, and currency are required." });
-//     }
-
-//     if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-//       return res.status(400).json({ message: "Invalid currency type. Use 'usdt', 'ethereum', or 'bitcoin'." });
-//     }
-
-//     if (amount <= 0) {
-//       return res.status(400).json({ message: "Amount must be greater than zero." });
-//     }
-
-//     // Find the user by wallet address
-//     const user = await User.findOne({ walletAddress });
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found with the provided wallet address." });
-//     }
-
-//     // Update user's balance
-//     user.balance[currency] += amount;
-
-//     // Add an activity log
-//     await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
-
-//     // Save updated user data
-//     await user.save();
-
-//     return res.status(200).json({
-//       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
-//       user: {
-//         fullname: user.fullname,
-//         walletAddress: user.walletAddress,
-//         balance: user.getBalance(),
-//       },
-//     });
-//   } catch (err) {
-//     console.error("Error funding user:", err);
-//     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
-//   }
-// });
-
+// Admin funding endpoint
 router.post('/admin/fund-user', async (req, res) => {
   try {
     const { walletAddress, amount, currency } = req.body;
@@ -991,57 +944,21 @@ router.post('/admin/fund-user', async (req, res) => {
       return res.status(404).json({ message: "User not found with the provided wallet address." });
     }
 
-    // Ensure the balance object exists and update user's balance
-    if (!user.balance[currency]) {
-      user.balance[currency] = 0; // Default to 0 if the currency key doesn't exist
-    }
+    // Update user's balance
     user.balance[currency] += amount;
 
     // Add an activity log
-    if (typeof user.addActivity === "function") {
-      await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
-    }
+    await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
 
     // Save updated user data
     await user.save();
-
-    // Email Notification
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER, // Your Gmail account
-        pass: process.env.EMAIL_PASS, // Your Gmail app password or OAuth2 token
-      },
-    });
-
-    const mailOptions = {
-      from: `"BitFluxCapital" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: 'Deposit Notification - Your Wallet Has Been Credited',
-      html: `
-        <div style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
-          <h2 style="color: #333; text-align: center; font-size: 24px; margin-bottom: 20px;">Deposit Notification</h2>
-          <p style="font-size: 16px; color: #555;">Your wallet has been successfully credited:</p>
-          
-          <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
-            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Wallet Address:</strong> <span style="color: #555;">${walletAddress}</span></p>
-            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Amount Credited:</strong> <span style="color: #4CAF50;">${amount} ${currency.toUpperCase()}</span></p>
-            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Updated Balance:</strong> <span style="color: #4CAF50;">${user.balance[currency]} ${currency.toUpperCase()}</span></p>
-          </div>
-    
-          <p style="font-size: 14px; color: #777; text-align: center;">Thank you for using BitFluxCapital. If you have any questions, please contact our support team.</p>
-        </div>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
 
     return res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
       user: {
         fullname: user.fullname,
         walletAddress: user.walletAddress,
-        balance: user.balance,
+        balance: user.getBalance(),
       },
     });
   } catch (err) {
@@ -1049,8 +966,6 @@ router.post('/admin/fund-user', async (req, res) => {
     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
   }
 });
-
-
 
 // Get user balance
 router.get("/user/balance/:userId", async (req, res) => {
