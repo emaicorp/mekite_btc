@@ -967,7 +967,6 @@ router.get("/api/messages/:email", async (req, res) => {
 //   }
 // });
 
-// Admin funding endpoint
 router.post('/admin/fund-user', async (req, res) => {
   try {
     const { walletAddress, amount, currency } = req.body;
@@ -984,6 +983,7 @@ router.post('/admin/fund-user', async (req, res) => {
     if (amount <= 0) {
       return res.status(400).json({ message: "Amount must be greater than zero." });
     }
+    
 
     // Find the user by wallet address
     const user = await User.findOne({ walletAddress });
@@ -1001,7 +1001,7 @@ router.post('/admin/fund-user', async (req, res) => {
     // Save updated user data
     await user.save();
 
-    // Send the response to the client before sending the email
+    // Send the response to the client immediately
     res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
       user: {
@@ -1011,22 +1011,19 @@ router.post('/admin/fund-user', async (req, res) => {
       },
     });
 
-    // Send email notification asynchronously
+    // Prepare email details
     const emailSubject = 'Funds Deposited';
     const emailText = `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`;
     const emailHtml = `<p>Dear ${user.fullname},</p><p>Your account has been credited with <strong>${amount} ${currency.toUpperCase()}</strong>.</p><p>Thank you,<br>Admin</p>`;
 
+    // Send email notification asynchronously
     sendEmail(user.email, emailSubject, emailText, emailHtml)
-      .then(response => {
-        console.log('Email sent:', response);
-      })
-      .catch(error => {
-        console.error('Error sending email:', error);
-      });
+      .then(response => console.log("Email sent:", response))
+      .catch(error => console.error("Email sending failed:", error));
 
   } catch (err) {
     console.error("Error funding user:", err);
-    return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
+    res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
   }
 });
 
