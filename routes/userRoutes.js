@@ -1001,22 +1001,6 @@ router.post('/admin/fund-user', async (req, res) => {
     // Save updated user data
     await user.save();
 
-    // Sending email notification to the user (send after response)
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,  // replace with your email
-        pass: process.env.EMAIL_PASS     // replace with your email password
-      }
-    });
-
-    const mailOptions = {
-      from: `"Bit Flux Capital" <${process.env.EMAIL_USER}>`,
-      to: user.email, // user's email
-      subject: 'Funds Deposited',
-      text: `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`
-    };
-
     // Send the response to the client before sending the email
     res.status(200).json({
       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
@@ -1027,21 +1011,24 @@ router.post('/admin/fund-user', async (req, res) => {
       },
     });
 
-    // Send the email asynchronously without blocking the response
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error("Error sending email:", error);
-      } else {
-        console.log('Email sent: ' + info.response);
-      }
-    });
+    // Send email notification asynchronously
+    const emailSubject = 'Funds Deposited';
+    const emailText = `Dear ${user.fullname},\n\nYour account has been credited with ${amount} ${currency.toUpperCase()}.\n\nThank you,\nAdmin`;
+    const emailHtml = `<p>Dear ${user.fullname},</p><p>Your account has been credited with <strong>${amount} ${currency.toUpperCase()}</strong>.</p><p>Thank you,<br>Admin</p>`;
+
+    sendEmail(user.email, emailSubject, emailText, emailHtml)
+      .then(response => {
+        console.log('Email sent:', response);
+      })
+      .catch(error => {
+        console.error('Error sending email:', error);
+      });
 
   } catch (err) {
     console.error("Error funding user:", err);
     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
   }
 });
-
 
 // Get user balance
 router.get("/user/balance/:userId", async (req, res) => {

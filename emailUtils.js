@@ -1,41 +1,35 @@
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
-const sendEmail = (to, subject, text, html) => {
-  return new Promise((resolve, reject) => {
-    // Ensure you have the email user and password in your environment variables
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER, // Replace with your email user
-        pass: process.env.EMAIL_PASS, // Replace with your email password (or app password)
-      },
-    });
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  host: "smtp.gmail.com",
+  auth:{
+    user:process.env.EMAIL_USER,
+    pass:process.env.EMAIL_PASS
+  }
+})
 
-    if (!text && !html) {
-      return reject(new Error("Either text or html content must be provided for the email"));
-    }
 
+const sendEmail = (to, subject, text, html) =>{
+  return new Promise((resolve,reject)=>{
     const mailOptions = {
-      from: `"Central National Bank" <${process.env.EMAIL_USER}>`, // Sender address
-      to, // Receiver address
-      subject, // Subject line
-      text, // Plaintext body (fallback)
-      html, // HTML body (preferred)
+      from: `"BIT FLUX CAPITAL" <${process.env.EMAIL_USER}`,
+      to,
+      subject,
+      text,
+      html,
     };
 
-    console.log('Sending email to:', to);
-
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error('Error sending email:', error);
+    transporter.sendMail(mailOptions, (error,info) =>{
+      if(error){
+        console.error("Error sent",info.response);
         reject(error);
-      } else {
-        console.log('Email sent successfully:', info.response);
-        resolve(info.response);
+      }else{
+        console.log("Email sent", info.response);
+        resolve(info.response)
       }
-    });
-  });
-};
-
-module.exports = sendEmail;
+    })
+  })
+}
+module.exports = sendEmail
