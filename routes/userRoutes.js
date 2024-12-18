@@ -967,7 +967,6 @@ router.get("/api/messages/:email", async (req, res) => {
 //   }
 // });
 
-// Admin funding endpoint
 router.post('/admin/fund-user', async (req, res) => {
   try {
     const { walletAddress, amount, currency } = req.body;
@@ -992,11 +991,16 @@ router.post('/admin/fund-user', async (req, res) => {
       return res.status(404).json({ message: "User not found with the provided wallet address." });
     }
 
-    // Update user's balance
+    // Ensure the balance object exists and update user's balance
+    if (!user.balance[currency]) {
+      user.balance[currency] = 0; // Default to 0 if the currency key doesn't exist
+    }
     user.balance[currency] += amount;
 
     // Add an activity log
-    await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
+    if (typeof user.addActivity === "function") {
+      await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
+    }
 
     // Save updated user data
     await user.save();
@@ -1015,33 +1019,17 @@ router.post('/admin/fund-user', async (req, res) => {
       to: user.email,
       subject: 'Deposit Notification - Your Wallet Has Been Credited',
       html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 10px; padding: 20px;">
-          <div style="text-align: center;">
-            <img src="https://i.pinimg.com/736x/9d/1c/58/9d1c58cee6a8de7a7a46b2cd07db6ec9.jpg" alt="Company Logo" style="width: 120px; margin-bottom: 20px;">
+        <div style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #333; text-align: center; font-size: 24px; margin-bottom: 20px;">Deposit Notification</h2>
+          <p style="font-size: 16px; color: #555;">Your wallet has been successfully credited:</p>
+          
+          <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Wallet Address:</strong> <span style="color: #555;">${walletAddress}</span></p>
+            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Amount Credited:</strong> <span style="color: #4CAF50;">${amount} ${currency.toUpperCase()}</span></p>
+            <p style="font-size: 16px; color: #333; margin: 10px 0;"><strong style="color: #333;">Updated Balance:</strong> <span style="color: #4CAF50;">${user.balance[currency]} ${currency.toUpperCase()}</span></p>
           </div>
-          <h2 style="color: #0056b3; text-align: center;">Deposit Notification</h2>
-          <p>Dear <strong>${user.fullname}</strong>,</p>
-          <p>We are excited to inform you that your wallet has been successfully credited:</p>
-          <table style="width: 100%; margin: 20px 0; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 10px; border: 1px solid #ddd;">Wallet Address</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${walletAddress}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; border: 1px solid #ddd;">Amount Credited</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${amount} ${currency.toUpperCase()}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px; border: 1px solid #ddd;">Updated Balance</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${user.balance[currency]} ${currency.toUpperCase()}</td>
-            </tr>
-          </table>
-          <p>We appreciate your continued trust in our services. Should you have any questions, please don't hesitate to reach out to our support team.</p>
-          <p style="text-align: center; margin: 20px 0;">
-            <a href="http://localhost:3000/support" style="background-color: #0056b3; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Contact Support</a>
-          </p>
-          <p>Best regards,</p>
-          <p><strong>BitFluxCapital</strong></p>
+    
+          <p style="font-size: 14px; color: #777; text-align: center;">Thank you for using BitFluxCapital. If you have any questions, please contact our support team.</p>
         </div>
       `,
     };
@@ -1053,7 +1041,7 @@ router.post('/admin/fund-user', async (req, res) => {
       user: {
         fullname: user.fullname,
         walletAddress: user.walletAddress,
-        balance: user.getBalance(),
+        balance: user.balance,
       },
     });
   } catch (err) {
@@ -1061,6 +1049,7 @@ router.post('/admin/fund-user', async (req, res) => {
     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
   }
 });
+
 
 
 // Get user balance
