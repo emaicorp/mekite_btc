@@ -519,53 +519,106 @@ router.post('/invest', async (req, res) => {
     }
   });    
 
-// Withdraw route - backend
-
+// POST endpoint for user withdrawal
 router.post('/withdraw', async (req, res) => {
   try {
-    const { amount, currency, withdrawalAddress } = req.body;
-    const token = req.headers.authorization.split(' ')[1]; // Extract token from authorization header
-    const decodedToken = jwt.verify(token, process.env.JWT_SECRET); // Decode the token
+    const { userId, currency, amount } = req.body;
 
-    const userId = decodedToken.userId; // Get userId from decoded token
+    // Validate the request
+    if (!userId || !currency || !amount) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
 
-    // Find the user by decoded userId
+    // Check if the currency is valid
+    const validCurrencies = ['usdt', 'ethereum', 'bitcoin'];
+    if (!validCurrencies.includes(currency)) {
+      return res.status(400).json({ success: false, message: 'Invalid currency' });
+    }
+
+    // Find the user
     const user = await User.findById(userId);
-
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Check if the user has enough balance for the withdrawal
+    // Check if the user has sufficient balance
     if (user.balance[currency] < amount) {
-      return res.status(400).json({ error: 'Insufficient balance for withdrawal' });
+      return res.status(400).json({ success: false, message: `Insufficient ${currency} balance` });
     }
 
-    // Deduct the amount from the user's balance
-    user.balance[currency] -= amount;
-    await user.save();
-
-    // Create a new Withdrawal record
-    const withdrawal = new Withdrawal({
-      userId,
+    // Create a pending withdrawal request
+    user.withdrawals.push({
       amount,
       currency,
-      withdrawalAddress,
+      status: 'pending',
     });
 
-    // Save the withdrawal record
-    await withdrawal.save();
+    // Save the user with the pending withdrawal
+    await user.save();
 
-    res.status(200).json({
-      message: 'Withdrawal request successfully processed',
-      withdrawal,
+    return res.status(200).json({
+      success: true,
+      message: 'Withdrawal request submitted successfully. Pending admin approval.',
+      withdrawal: {
+        currency,
+        amount,
+        status: 'pending',
+      },
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
+// Admin approves or rejects a withdrawal request
+router.post('/approve-withdrawal', async (req, res) => {
+  try {
+    const { userId, withdrawalId, status } = req.body;
+
+    // Validate request
+    if (!userId || !withdrawalId || !['completed', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid request data' });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Find the pending withdrawal
+    const withdrawal = user.withdrawals.id(withdrawalId);
+    if (!withdrawal || withdrawal.status !== 'pending') {
+      return res.status(404).json({ success: false, message: 'Withdrawal not found or already processed' });
+    }
+
+    // Process the withdrawal
+    if (status === 'completed') {
+      if (user.balance[withdrawal.currency] < withdrawal.amount) {
+        return res.status(400).json({ success: false, message: `Insufficient ${withdrawal.currency} balance` });
+      }
+
+      // Deduct the amount from the user's balance
+      user.balance[withdrawal.currency] -= withdrawal.amount;
+    }
+
+    // Update the withdrawal status
+    withdrawal.status = status;
+
+    // Save the user
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Withdrawal ${status} successfully`,
+      withdrawal,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
   router.get('/user/history/:username', async (req, res) => {
     const { username } = req.params;
