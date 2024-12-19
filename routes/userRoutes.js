@@ -108,11 +108,11 @@ router.post('/register', async (req, res) => {
   }
 });
 
-
 router.post('/login', async (req, res) => {
   try {
     const { email, username, password } = req.body;
 
+    // Ensure that email or username and password are provided
     if (!(email || username) || !password) {
       return res.status(400).json({
         message: 'Please provide an email or username along with the password.',
@@ -120,7 +120,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Find user by email or username
+    // Find the user by email or username
     const user = await User.findOne({
       $or: [{ email }, { username }],
     });
@@ -141,8 +141,12 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign({ id: user._id, roles: user.roles }, 'your_jwt_secret', { expiresIn: '1h' });
+    // Generate JWT token with user roles included
+    const token = jwt.sign(
+      { id: user._id, roles: user.roles }, // Ensure user.roles is an array
+      process.env.JWT_SECRET, // Use a secret key for signing the token
+      { expiresIn: '1h' } // Token expiry time
+    );
 
     // Remove password from the response
     const { password: _, ...userDetails } = user.toObject();
@@ -150,8 +154,8 @@ router.post('/login', async (req, res) => {
     res.status(200).json({
       message: 'Login successful! You are now logged in.',
       style: 'success',
-      token,
-      user: userDetails,
+      token, // Send the token back in the response
+      user: userDetails, // Send user details without password
     });
   } catch (error) {
     console.error('Error in /login endpoint:', error.message);
