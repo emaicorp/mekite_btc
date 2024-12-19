@@ -520,7 +520,6 @@ router.post('/invest', async (req, res) => {
   });    
 
 // Withdraw route - backend
-const jwt = require('jsonwebtoken');
 
 router.post('/withdraw', async (req, res) => {
   try {
