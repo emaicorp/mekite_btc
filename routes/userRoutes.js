@@ -228,33 +228,45 @@ router.put('/update', authMiddleware, async (req, res) => {
   }
 });
 
-// Forgot Password
+// Forgot Password: Validate email
 router.post('/forgot-password', async (req, res) => {
   try {
-    const { email, secretAnswer } = req.body;
+    const { email } = req.body;
 
+    // Check if user exists
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    if (user.security.secretAnswer !== secretAnswer)
-      return res.status(400).json({ message: 'Invalid secret answer' });
-
-    res.status(200).json({ message: 'Secret answer validated. Proceed to reset your password.' });
+    res.status(200).json({
+      message: 'Email validated. You may now reset your password.',
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Reset Password
+// Reset Password: Update the password
 router.post('/reset-password', async (req, res) => {
   try {
     const { email, newPassword } = req.body;
 
+    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await User.findOneAndUpdate({ email }, { password: hashedPassword });
+    // Update user password
+    const updatedUser = await User.findOneAndUpdate(
+      { email },
+      { password: hashedPassword },
+      { new: true }
+    );
 
-    res.status(200).json({ message: 'Password reset successfully' });
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'Password reset successfully.' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
