@@ -35,7 +35,6 @@ const UserSchema = new Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  roles: { type: [String], default: ['user'] },
   wallets: {
     usdt: { type: String },
     ethereum: { type: String },
@@ -53,6 +52,7 @@ const UserSchema = new Schema({
     ethereum: { type: Number, default: 0 },
     bitcoin: { type: Number, default: 0 },
   },
+  roles: { type: [String], default: ['user'] }, // Change `role` to `roles` and make it an array
 
   deposits: [DepositSchema], // New deposits field to track user deposits
   withdrawals: [WithdrawalSchema], // New field to track withdrawals
@@ -86,6 +86,17 @@ UserSchema.methods.getBalance = function () {
     bitcoin: this.balance.bitcoin,
   };
 };
+
+UserSchema.methods.getDashboardMessage = function () {
+  if (!Array.isArray(this.roles)) {
+    return 'Unable to determine dashboard access. Please contact support.';
+  }
+  if (this.roles.includes('admin')) {
+    return 'Welcome Admin! You have access to the Admin Dashboard.';
+  }
+  return 'Welcome User! You have access to the User Dashboard.';
+};
+
 
 // Method to update user balances
 UserSchema.methods.updateBalance = function (currency, amount) {

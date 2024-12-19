@@ -10,6 +10,7 @@ const Investment = require('../models/Investment'); // Ensure Investment schema 
 const authMiddleware = require('../middleware/authMiddleware');
 const Wallet = require('../models/UserWalletSchema')
 const Message = require("../models/MessageSchema")
+// const dashboardMessage = User.getDashboardMessage();
 
 const router = express.Router();
 
@@ -108,61 +109,46 @@ router.post('/register', async (req, res) => {
   }
 });
 
+
 router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
   try {
-    const { email, username, password } = req.body;
-
-    // Ensure that email or username and password are provided
-    if (!(email || username) || !password) {
-      return res.status(400).json({
-        message: 'Please provide an email or username along with the password.',
-        style: 'error',
-      });
-    }
-
-    // Find the user by email or username
-    const user = await User.findOne({
-      $or: [{ email }, { username }],
-    });
+    // Find user by username
+    const user = await User.findOne({ username });
 
     if (!user) {
-      return res.status(404).json({
-        message: 'No account found with this email or username. Please check your credentials or register.',
-        style: 'error',
-      });
+      return res.status(404).json({ message: 'User not found', style: 'error' });
     }
 
-    // Check if password matches
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({
-        message: 'The password you entered is incorrect. Please try again.',
-        style: 'error',
-      });
+    // Compare passwords
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials', style: 'error' });
     }
 
-    // Generate JWT token with user roles included
+    // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, roles: user.roles }, // Ensure user.roles is an array
-      process.env.JWT_SECRET, // Use a secret key for signing the token
-      { expiresIn: '1h' } // Token expiry time
+      { id: user._id, roles: user.roles },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
     );
 
-    // Remove password from the response
-    const { password: _, ...userDetails } = user.toObject();
+    // Check roles and customize response
+    const dashboardMessage = user.roles.includes('admin')
+      ? 'Welcome Admin! You have access to the Admin Dashboard.'
+      : 'Welcome User! You have access to the User Dashboard.';
 
-    res.status(200).json({
+    return res.json({
       message: 'Login successful! You are now logged in.',
       style: 'success',
-      token, // Send the token back in the response
-      user: userDetails, // Send user details without password
+      token,
+      user,
+      dashboardMessage,
     });
   } catch (error) {
-    console.error('Error in /login endpoint:', error.message);
-    res.status(500).json({
-      message: `An unexpected error occurred. Please try again later.`,
-      style: 'error',
-    });
+    return res.status(500).json({ message: 'Internal server error', style: 'error' });
   }
 });
 
