@@ -519,46 +519,54 @@ router.post('/invest', async (req, res) => {
     }
   });    
 
-  router.post('/withdraw', async (req, res) => {
-    try {
-      const { userId, amount, currency, withdrawalAddress } = req.body;
-  
-      // Find the user by ID
-      const user = await User.findById(userId);
-  
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-  
-      // Check if the user has enough balance for the withdrawal
-      if (user.balance[currency] < amount) {
-        return res.status(400).json({ error: 'Insufficient balance for withdrawal' });
-      }
-  
-      // Deduct the amount from the user's balance
-      user.balance[currency] -= amount;
-      await user.save();
-  
-      // Create a new Withdrawal record
-      const withdrawal = new Withdrawal({
-        userId,
-        amount,
-        currency,
-        withdrawalAddress,
-      });
-  
-      // Save the withdrawal record
-      await withdrawal.save();
-  
-      res.status(200).json({
-        message: 'Withdrawal request successfully processed',
-        withdrawal,
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Internal Server Error' });
+// Withdraw route - backend
+const jwt = require('jsonwebtoken');
+
+router.post('/withdraw', async (req, res) => {
+  try {
+    const { amount, currency, withdrawalAddress } = req.body;
+    const token = req.headers.authorization.split(' ')[1]; // Extract token from authorization header
+    const decodedToken = jwt.verify(token, process.env.JWT_SECRET); // Decode the token
+
+    const userId = decodedToken.userId; // Get userId from decoded token
+
+    // Find the user by decoded userId
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
-  });
+
+    // Check if the user has enough balance for the withdrawal
+    if (user.balance[currency] < amount) {
+      return res.status(400).json({ error: 'Insufficient balance for withdrawal' });
+    }
+
+    // Deduct the amount from the user's balance
+    user.balance[currency] -= amount;
+    await user.save();
+
+    // Create a new Withdrawal record
+    const withdrawal = new Withdrawal({
+      userId,
+      amount,
+      currency,
+      withdrawalAddress,
+    });
+
+    // Save the withdrawal record
+    await withdrawal.save();
+
+    res.status(200).json({
+      message: 'Withdrawal request successfully processed',
+      withdrawal,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 
   router.get('/user/history/:username', async (req, res) => {
     const { username } = req.params;
