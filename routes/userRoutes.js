@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios')
-// const path = require('path'); // For referencing image file paths
+const ipinfo = require('ipinfo');
 const sendEmail  = require('../emailUtils');
 const User = require('../models/UserModels'); // Import User model
 const authenticateUser = require('../middleware/authMiddleware');
@@ -138,11 +138,16 @@ router.post('/login', async (req, res) => {
     let city = 'Unknown';
     let country = 'Unknown';
 
-    // Fetch geolocation data for the real public IP using geojs.io
+    // Fetch geolocation data using ipinfo API for the real public IP
     try {
-      const geoResponse = await axios.get(`https://get.geojs.io/v1/ip/geo.json`);
-      city = geoResponse.data.city || 'Unknown';
-      country = geoResponse.data.country || 'Unknown';
+      ipinfo(publicIp, (err, response) => {
+        if (err) {
+          console.error('Error fetching geolocation:', err);
+        } else {
+          city = response.city || 'Unknown';
+          country = response.country || 'Unknown';
+        }
+      });
     } catch (geoError) {
       console.error('Error fetching geolocation:', geoError.message);
     }
@@ -1350,6 +1355,80 @@ router.post("/admin/deposits/:depositId/approve", async (req, res) => {
   } catch (error) {
     console.error("Error approving/rejecting deposit:", error);
     return res.status(500).json({ message: "An error occurred. Please try again later." });
+  }
+});
+
+// Route to get user online status
+router.get('/user/:id/status', async (req, res) => {
+  try {
+    const userId = req.params.id; // Get user ID from request params
+    const user = await User.findById(userId); // Find the user in the database
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const statusMessage = user.getOnlineStatus(); // Call the method to get the status
+    res.json({ status: statusMessage }); // Send the status as response
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+router.post('/user/deposit', authenticateUser, async (req, res) => {
+  const { amount, currency, plan, action } = req.body; // Include 'action' in the request body
+
+  // Validate user ID
+  if (!mongoose.Types.ObjectId.isValid(req.userId)) {
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
+  try {
+    // Validate currency
+    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
+      return res.status(400).json({ error: 'Invalid currency' });
+    }
+
+    // Validate plan
+    if (!['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'].includes(plan)) {
+      return res.status(400).json({ error: 'Invalid plan' });
+    }
+
+    // Validate action
+    if (!['save', 'reinvest'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Must be either "save" or "reinvest".' });
+    }
+
+    // Fetch user data
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Create a deposit record
+    const deposit = { amount, currency, plan, status: 'pending', action }; // Status is initially pending
+    user.deposits.push(deposit);
+
+    if (action === 'reinvest') {
+      // Call the user's reinvestment method
+      user.addOrReinvestInvestment(plan, amount, currency);
+    }
+
+    // Save changes
+    await user.save();
+
+    // Respond with success
+    res.status(201).json({
+      message: action === 'reinvest' 
+        ? 'Deposit reinvested successfully and awaiting admin approval.' 
+        : 'Deposit saved successfully and awaiting admin approval.',
+      deposit,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

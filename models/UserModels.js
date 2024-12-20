@@ -85,6 +85,14 @@ UserSchema.pre('save', function (next) {
   next();
 });
 
+UserSchema.methods.getOnlineStatus = function () {
+  if (this.isOnline) {
+    return 'Online';
+  } else {
+    const lastSeen = this.lastOnline ? `Last seen: ${this.lastOnline.toLocaleString()}` : 'Last seen: Never';
+    return `Offline - ${lastSeen}`;
+  }
+};
 
 // Method to get user balances
 UserSchema.methods.getBalance = function () {
