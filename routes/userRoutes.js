@@ -810,23 +810,44 @@ router.put('/user/update-wallet/:username', async (req, res) => {
 // admin
 router.get('/admin/users', async (req, res) => {
   try {
-    // Fetch all user details
     const users = await User.find();
 
-    // Map and structure the user data, adding online status calculation
-    const userDetails = users.map(user => ({
-      ...user._doc, // Spread the full user details
-      online: user.lastOnline && (new Date() - new Date(user.lastOnline)) < 5 * 60 * 1000, // Online if last activity within 5 minutes
+    // Fetch the country flags for each user
+    const userDetails = await Promise.all(users.map(async (user) => {
+      // Default location if not available
+      let city = 'Unknown';
+      let country = 'Unknown';
+      let countryFlag = '';
+
+      if (user.location && user.location.country) {
+        country = user.location.country;
+        // Fetch country flag from restcountries API
+        try {
+          const countryResponse = await axios.get(`https://restcountries.com/v3.1/name/${country}`);
+          countryFlag = countryResponse.data[0].flags.png || '';
+        } catch (error) {
+          console.error('Error fetching country flag:', error.message);
+        }
+      }
+
+      // Check if the user is online (last activity within 5 minutes)
+      const isOnline = user.lastOnline && (new Date() - new Date(user.lastOnline)) < 5 * 60 * 1000;
+
+      return {
+        ...user._doc, 
+        online: isOnline,
+        countryFlag,
+        city,
+        country,
+      };
     }));
 
-    // Send the structured user data as a response
     return res.status(200).json({
       success: true,
       message: 'All users retrieved successfully',
       data: userDetails,
     });
   } catch (error) {
-    // Handle any errors
     console.error('Error fetching users:', error.message);
     return res.status(500).json({
       success: false,
@@ -835,6 +856,7 @@ router.get('/admin/users', async (req, res) => {
     });
   }
 });
+
 
 
 // Endpoint to delete a specific user by user ID
