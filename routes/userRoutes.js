@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-// const nodemailer = require('nodemailer')
+const axios = require('axios')
 // const path = require('path'); // For referencing image file paths
 const sendEmail  = require('../emailUtils');
 const User = require('../models/UserModels'); // Import User model
@@ -128,14 +128,43 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials', style: 'error' });
     }
 
+    // Fetch user's public IP address (handling proxy or local addresses)
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    
+    // If the IP address is localhost, use a fallback to a public IP for testing purposes
+    const publicIp = ip.startsWith('::ffff:127.') || ip === '::1' ? '8.8.8.8' : ip;
+
+    // Initialize geolocation data
+    let city = 'Unknown';
+    let country = 'Unknown';
+
+    // Fetch geolocation data for the real public IP using geojs.io
+    try {
+      const geoResponse = await axios.get(`https://get.geojs.io/v1/ip/geo.json`);
+      city = geoResponse.data.city || 'Unknown';
+      country = geoResponse.data.country || 'Unknown';
+    } catch (geoError) {
+      console.error('Error fetching geolocation:', geoError.message);
+    }
+
+    // Update user's online status and location
+    user.lastOnline = new Date();
+    user.location = { ip: publicIp, city, country }; // Assuming your schema has a `location` field
+    await user.save();
+
     // Generate JWT token
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not defined');
+      throw new Error('JWT_SECRET is missing in environment variables');
+    }
+
     const token = jwt.sign(
       { id: user._id, roles: user.roles },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    // Check roles and customize response
+    // Customize dashboard message based on roles
     const dashboardMessage = user.roles.includes('admin')
       ? 'Welcome Admin! You have access to the Admin Dashboard.'
       : 'Welcome User! You have access to the User Dashboard.';
@@ -144,10 +173,16 @@ router.post('/login', async (req, res) => {
       message: 'Login successful! You are now logged in.',
       style: 'success',
       token,
-      user,
+      user: {
+        id: user._id,
+        username: user.username,
+        location: user.location,
+        roles: user.roles,
+      },
       dashboardMessage,
     });
   } catch (error) {
+    console.error('Error during login:', error.message);
     return res.status(500).json({ message: 'Internal server error', style: 'error' });
   }
 });
@@ -773,17 +808,22 @@ router.put('/user/update-wallet/:username', async (req, res) => {
 
 
 // admin
-// GET endpoint to retrieve all users
 router.get('/admin/users', async (req, res) => {
   try {
-    // Fetch all users and populate all details
+    // Fetch all user details
     const users = await User.find();
 
-    // Send the user data as a response
+    // Map and structure the user data, adding online status calculation
+    const userDetails = users.map(user => ({
+      ...user._doc, // Spread the full user details
+      online: user.lastOnline && (new Date() - new Date(user.lastOnline)) < 5 * 60 * 1000, // Online if last activity within 5 minutes
+    }));
+
+    // Send the structured user data as a response
     return res.status(200).json({
       success: true,
       message: 'All users retrieved successfully',
-      data: users,
+      data: userDetails,
     });
   } catch (error) {
     // Handle any errors
@@ -796,23 +836,23 @@ router.get('/admin/users', async (req, res) => {
   }
 });
 
+
 // Endpoint to delete a specific user by user ID
 router.delete('/admin/users/:userId', async (req, res) => {
   try {
     // Extract the userId from the request params
     const { userId } = req.params;
 
-    // Check if the user exists
-    const user = await User.findById(userId);
+    // Attempt to find and delete the user
+    const user = await User.findByIdAndDelete(userId);
+
+    // Check if the user was found and deleted
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
       });
     }
-
-    // Delete the user
-    await user.remove();
 
     // Send success response
     return res.status(200).json({
@@ -829,6 +869,7 @@ router.delete('/admin/users/:userId', async (req, res) => {
     });
   }
 });
+
 
 // POST endpoint to save or update wallet addresses
 router.post("/api/wallets", async (req, res) => {

@@ -9,11 +9,11 @@ const DepositSchema = new Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-const WithdrawalSchema = new Schema({
+const WithdrawalSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
-  currency: { type: String, required: true, enum: ['usdt', 'ethereum', 'bitcoin'] },
-  status: { type: String, enum: ['pending', 'completed', 'rejected'], default: 'pending' },
-  createdAt: { type: Date, default: Date.now },
+  currency: { type: String, required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  requestedAt: { type: Date, default: Date.now },
 });
 
 // Schema for user activity
@@ -61,6 +61,13 @@ const UserSchema = new Schema({
     activities: { type: [ActivitySchema], default: [] }, // Define and initialize
 
   totalEarnings: { type: Number, default: 0 }, // Track total earnings
+
+location: {
+    ip: String,
+    city: String,
+    country: String,
+  },
+  lastOnline: Date,
 }, { timestamps: true });
 
 UserSchema.pre('save', function (next) {
