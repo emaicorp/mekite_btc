@@ -1199,43 +1199,43 @@ router.get("/user/balance/:userId", async (req, res) => {
 
 
 // Endpoint for users to fund their account
-router.post("/fund", async (req, res) => {
-  const { walletAddress, amount, currency } = req.body;
+// router.post("/fund", async (req, res) => {
+//   const { walletAddress, amount, currency } = req.body;
 
-  try {
-    // Validate the request
-    if (!walletAddress || !amount || !currency) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
+//   try {
+//     // Validate the request
+//     if (!walletAddress || !amount || !currency) {
+//       return res.status(400).json({ message: "All fields are required." });
+//     }
 
-    // Find the user by wallet address
-    const user = await User.findOne({ walletAddress });
+//     // Find the user by wallet address
+//     const user = await User.findOne({ walletAddress });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found with the given wallet address." });
-    }
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found with the given wallet address." });
+//     }
 
-    // Create a new deposit request
-    const newDeposit = {
-      amount,
-      currency,
-      status: "active", // Start as pending admin approval
-    };
+//     // Create a new deposit request
+//     const newDeposit = {
+//       amount,
+//       currency,
+//       status: "active", // Start as pending admin approval
+//     };
 
-    user.deposits.push(newDeposit);
+//     user.deposits.push(newDeposit);
 
-    // Log the activity
-    await user.addActivity(`Created a funding request for ${amount} ${currency}`);
+//     // Log the activity
+//     await user.addActivity(`Created a funding request for ${amount} ${currency}`);
 
-    // Save the user with the new deposit
-    await user.save();
+//     // Save the user with the new deposit
+//     await user.save();
 
-    return res.status(201).json({ message: "Funding request created successfully." });
-  } catch (error) {
-    console.error("Error creating funding request:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
+//     return res.status(201).json({ message: "Funding request created successfully." });
+//   } catch (error) {
+//     console.error("Error creating funding request:", error);
+//     return res.status(500).json({ message: "An error occurred. Please try again later." });
+//   }
+// });
 
 // Endpoint for admin to approve funding
 router.post("/approve-fund", async (req, res) => {
@@ -1378,57 +1378,189 @@ router.get('/user/:id/status', async (req, res) => {
 });
 
 
+// User deposit endpoint with token-based userId extraction
 router.post('/user/deposit', authenticateUser, async (req, res) => {
-  const { amount, currency, plan, action } = req.body; // Include 'action' in the request body
-
-  // Validate user ID
-  if (!mongoose.Types.ObjectId.isValid(req.userId)) {
-    return res.status(400).json({ error: 'Invalid user ID' });
-  }
+  const { amount, currency, plan } = req.body;
 
   try {
-    // Validate currency
     if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
       return res.status(400).json({ error: 'Invalid currency' });
     }
-
-    // Validate plan
     if (!['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'].includes(plan)) {
       return res.status(400).json({ error: 'Invalid plan' });
     }
 
-    // Validate action
-    if (!['save', 'reinvest'].includes(action)) {
-      return res.status(400).json({ error: 'Invalid action. Must be either "save" or "reinvest".' });
-    }
-
-    // Fetch user data
     const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Create a deposit record
-    const deposit = { amount, currency, plan, status: 'pending', action }; // Status is initially pending
-    user.deposits.push(deposit);
-
-    if (action === 'reinvest') {
-      // Call the user's reinvestment method
-      user.addOrReinvestInvestment(plan, amount, currency);
-    }
-
-    // Save changes
+    user.deposits.push({ amount, currency });
+    user.addOrReinvestInvestment(plan, amount, currency);
     await user.save();
 
-    // Respond with success
     res.status(201).json({
-      message: action === 'reinvest' 
-        ? 'Deposit reinvested successfully and awaiting admin approval.' 
-        : 'Deposit saved successfully and awaiting admin approval.',
-      deposit,
+      message: 'Deposit created successfully',
+      deposit: { amount, currency, status: 'active' },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST to create a new investment
+router.post('/investment/:userId/create', async (req, res) => {
+  const { userId } = req.params;
+  const { investmentPlan, amount, currency, paymentMethod } = req.body;
+
+  try {
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Create the investment without checking the balance
+    const newInvestment = {
+      investmentPlan,
+      paymentMethod,
+      amount,
+      currency,
+      status: 'pending',  // Set status to 'pending' automatically
+    };
+
+    user.investments.push(newInvestment); // Add the new investment
+
+    await user.save(); // Save the updated user document
+
+    res.status(201).json({ message: 'Investment created successfully', investment: newInvestment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST to reinvest in a plan
+router.post('/investment/:userId/reinvest', async (req, res) => {
+  const { userId } = req.params;
+  const { investmentPlan, amount, currency, paymentMethod } = req.body;
+
+  try {
+    // Find the user by ID
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Create the reinvestment (set status to 'pending' without checking balance)
+    const newInvestment = {
+      investmentPlan,
+      paymentMethod,
+      amount,
+      currency,
+      status: 'pending',  // Automatically set to 'pending'
+    };
+
+    // Add the new reinvestment to the user's investments
+    user.investments.push(newInvestment);
+
+    // Save the updated user document
+    await user.save();
+
+    // Return the success response
+    res.status(201).json({
+      message: 'Reinvestment created successfully',
+      investment: newInvestment,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.get('/investments/pending', async (req, res) => {
+  try {
+    // Find all users with investments that are pending
+    const users = await User.find({ 'investments.status': 'pending' }).populate('investments');
+
+    // Gather all pending investments from all users
+    const pendingInvestments = [];
+    users.forEach(user => {
+      user.investments.forEach(investment => {
+        if (investment.status === 'pending') {
+          pendingInvestments.push({
+            investmentId: investment._id, // Include the investment ID
+            userId: user._id,
+            investmentPlan: investment.investmentPlan,
+            amount: investment.amount,
+            currency: investment.currency,
+            paymentMethod: investment.paymentMethod,
+            status: investment.status,
+          });
+        }
+      });
+    });
+
+    // If no pending investments, return an appropriate message
+    if (pendingInvestments.length === 0) {
+      return res.status(404).json({ message: 'No pending investments found' });
+    }
+
+    // Respond with the list of pending investments
+    res.status(200).json({
+      message: 'Pending investments retrieved successfully',
+      pendingInvestments,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// PATCH to approve or reject an investment
+router.patch('/investment/:investmentId/status', async (req, res) => {
+  const { investmentId } = req.params;
+  const { status } = req.body;
+
+  // Validate the status
+  if (status !== 'approved' && status !== 'rejected') {
+    return res.status(400).json({ message: 'Invalid status. Must be "approved" or "rejected".' });
+  }
+
+  try {
+    // Find the investment by ID
+    const user = await User.findOne({ 'investments._id': investmentId });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Investment not found' });
+    }
+
+    // Find the specific investment within the user's investments array
+    const investment = user.investments.id(investmentId);
+
+    if (!investment) {
+      return res.status(404).json({ message: 'Investment not found' });
+    }
+
+    // Update the investment's status
+    investment.status = status;
+
+    // Save the updated user document with the modified investment
+    await user.save();
+
+    res.status(200).json({
+      message: `Investment ${status} successfully`,
+      investment: {
+        investmentPlan: investment.investmentPlan,
+        amount: investment.amount,
+        currency: investment.currency,
+        paymentMethod: investment.paymentMethod,
+        status: investment.status,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 

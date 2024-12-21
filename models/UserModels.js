@@ -23,12 +23,13 @@ const ActivitySchema = new Schema({
 });
 
 const InvestmentSchema = new mongoose.Schema({
-  plan: { type: String, enum: ['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'], required: true },
+  investmentPlan: { type: String, required: true, enum: ['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'] },
+  paymentMethod: { type: String, required: true, enum: ['USDT', 'Ethereum', 'Bitcoin'] },
   amount: { type: Number, required: true },
   currency: { type: String, enum: ['usdt', 'ethereum', 'bitcoin'], required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }, 
   createdAt: { type: Date, default: Date.now },
 });
-
 
 const UserSchema = new Schema({
   fullname: { type: String, required: true },
@@ -85,14 +86,6 @@ UserSchema.pre('save', function (next) {
   next();
 });
 
-UserSchema.methods.getOnlineStatus = function () {
-  if (this.isOnline) {
-    return 'Online';
-  } else {
-    const lastSeen = this.lastOnline ? `Last seen: ${this.lastOnline.toLocaleString()}` : 'Last seen: Never';
-    return `Offline - ${lastSeen}`;
-  }
-};
 
 // Method to get user balances
 UserSchema.methods.getBalance = function () {
@@ -191,17 +184,24 @@ UserSchema.methods.processWithdrawal = function (withdrawalId, status) {
 };
 
 
-// Method to add or reinvest in a plan
-UserSchema.methods.addOrReinvestInvestment = function (plan, amount, currency) {
-  const investment = this.investments.find((inv) => inv.plan === plan && inv.currency === currency);
-  
-  if (investment) {
-    // Reinvest into existing plan
-    investment.amount += amount;
-  } else {
-    // Add a new investment
-    this.investments.push({ plan, amount, currency });
-  }
-  return this.save();
+UserSchema.methods.addInvestment = async function (investmentPlan, amount, currency, paymentMethod) {
+  // Create the investment object and set the status to 'pending' directly
+  const newInvestment = new Investment({
+    investmentPlan,
+    paymentMethod,
+    amount,  
+    currency,
+    status: 'pending', // Automatically set status to 'pending' without balance check
+  });
+
+  // Add the investment to the user's investments
+  this.investments.push(newInvestment);
+
+  // Save the updated user record
+  await this.save();
+
+  return newInvestment; // Return the new investment object
 };
+
+
 module.exports = mongoose.model('User', UserSchema);
