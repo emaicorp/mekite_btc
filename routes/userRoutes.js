@@ -1,1567 +1,750 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const axios = require('axios');  // To fetch location data using IP
 const jwt = require('jsonwebtoken');
-const axios = require('axios')
-const ipinfo = require('ipinfo');
-const sendEmail  = require('../emailUtils');
-const User = require('../models/UserModels'); // Import User model
-const authenticateUser = require('../middleware/authMiddleware');
-const Investment = require('../models/Investment'); // Ensure Investment schema is correctly imported
-const authMiddleware = require('../middleware/authMiddleware');
-const Wallet = require('../models/UserWalletSchema')
-const Message = require("../models/MessageSchema")
-// const dashboardMessage = User.getDashboardMessage();
+const User = require('../models/User'); // Adjust the path if needed
+require('dotenv').config();
 
 const router = express.Router();
 
+// Generate wallet address (mock function)
+const generateWalletAddress = () => {
+  return `0x${crypto.randomBytes(20).toString('hex')}`;
+};
+
+// Generate referral link
+const generateReferralLink = (username) => {
+  return `https://yourapp.com/register?ref=${username}`;
+};
+
+// Generate Reset Token
+function generateResetToken() {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+// Setup Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: 'Gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
 router.post('/register', async (req, res) => {
   try {
-    const { fullname, username, email, password, secretQuestion, secretAnswer, wallets } = req.body;
+      const {
+          fullName,
+          username,
+          password,
+          email,
+          recoveryQuestion,
+          recoveryAnswer,
+          agreedToTerms,
+          referredBy, // For referral
+          bitcoinWallet, // Optional
+          ethereumWallet, // Optional
+          usdtWallet, // Optional
+      } = req.body;
 
-    // Check for existing username or email
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }],
-    });
+      // Validation
+      if (
+          !fullName ||
+          !username ||
+          !password ||
+          !email ||
+          !recoveryQuestion ||
+          !recoveryAnswer ||
+          !agreedToTerms
+      ) {
+          return res.status(400).json({ message: 'All required fields must be filled.' });
+      }
 
-    if (existingUser) {
-      return res.status(400).json({
-        message: existingUser.username === username
-          ? 'Username is already taken.'
-          : 'Email is already registered.',
+      // Check for existing user
+      const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+      if (existingUser) {
+          return res.status(400).json({ message: 'Username or email already exists.' });
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Generate wallet address and referral link
+      const walletAddress = generateWalletAddress();
+      const referralLink = generateReferralLink(username);
+
+      // Create new user
+      const newUser = new User({
+          fullName,
+          username,
+          password: hashedPassword,
+          email,
+          recoveryQuestion,
+          recoveryAnswer,
+          walletAddress,
+          referralLink,
+          agreedToTerms,
+          bitcoinWallet, // Add if provided
+          ethereumWallet, // Add if provided
+          usdtWallet, // Add if provided
       });
-    }
 
-    // Validate wallets input
-    if (wallets && typeof wallets !== 'object') {
-      return res.status(400).json({ message: 'Invalid wallets format.' });
-    }
+      // Handle referrals
+      if (referredBy) {
+          const referrer = await User.findOne({ username: referredBy });
+          if (referrer) {
+              referrer.referrals.push({
+                  referredBy: referrer.username,
+                  status: 'active',
+                  commission: 0,
+              });
 
-    // Hash the password and secret answer
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const hashedSecretAnswer = await bcrypt.hash(secretAnswer, 10);
+              await referrer.save();
+          } else {
+              return res.status(404).json({ message: 'Referrer not found.' });
+          }
+      }
 
-    // Create the user (let the schema handle wallet address generation)
-    const newUser = new User({
-      fullname,
-      username,
-      email,
-      password: hashedPassword,
-      security: { secretQuestion, secretAnswer: hashedSecretAnswer },
-      wallets: wallets || {}, // Handle optional wallets
-    });
+      // Save the new user
+      await newUser.save();
 
-    const savedUser = await newUser.save();
+      // Send email with wallet address and referral link
+      const mailOptions = {
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Welcome to Your App',
+          text: `Hello ${fullName},\n\nThank you for registering. Here are your details:\n\nWallet Address: ${walletAddress}\nReferral Link: ${referralLink}\n\nBest regards,\nYour App Team`,
+      };
 
-    // Prepare email content
-    const emailSubject = 'Registration Successful - Wallet Address';
-    const emailText = `
-      Welcome, ${fullname}!
-      
-      Congratulations on registering with our platform.
-      Your generated wallet address is: ${savedUser.walletAddress}
+      await transporter.sendMail(mailOptions);
 
-      Please keep it secure and use it for your transactions.
-    `;
-
-    const emailHtml = `
-      <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; color: #333; background-color: #f4f7fa; padding: 20px; }
-            .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-            h2 { color: #4CAF50; text-align: center; }
-            p { font-size: 16px; margin: 10px 0; }
-            .wallet { font-size: 18px; font-weight: bold; color: #007BFF; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>Welcome, ${fullname}!</h2>
-            <p>Congratulations on successfully registering with our platform. Below is your generated wallet address:</p>
-            <p class="wallet">${savedUser.walletAddress}</p>
-            <p>Please keep it secure and use it for your transactions.</p>
-            <p>Thank you for choosing us!</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    // Send email with wallet address
-    try {
-      await sendEmail(email, emailSubject, emailText, emailHtml);
-      console.log('Welcome email sent successfully!');
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError.message);
-    }
-
-    res.status(201).json({
-      message: 'User registered successfully, and wallet address has been sent to your email.',
-      user: {
-        fullname: savedUser.fullname,
-        username: savedUser.username,
-        email: savedUser.email,
-        walletAddress: savedUser.walletAddress, // Ensure wallet address is returned
-      },
-    });
+      res.status(201).json({
+          message: 'User registered successfully. Wallet address and referral link sent to email.',
+          userDetails: {
+              fullName,
+              username,
+              email,
+              walletAddress,
+              referralLink,
+          },
+      });
   } catch (error) {
-    console.error('Error in /register endpoint:', error.message);
-    res.status(500).json({ message: 'An internal server error occurred.' });
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
 
 
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-
-  try {
-    // Find user by username
-    const user = await User.findOne({ username });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found', style: 'error' });
-    }
-
-    // Compare passwords
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials', style: 'error' });
-    }
-
-    // Fetch user's public IP address (handling proxy or local addresses)
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    
-    // If the IP address is localhost, use a fallback to a public IP for testing purposes
-    const publicIp = ip.startsWith('::ffff:127.') || ip === '::1' ? '8.8.8.8' : ip;
-
-    // Initialize geolocation data
-    let city = 'Unknown';
-    let country = 'Unknown';
-
-    // Fetch geolocation data using ipinfo API for the real public IP
     try {
-      ipinfo(publicIp, (err, response) => {
-        if (err) {
-          console.error('Error fetching geolocation:', err);
+      const { username, password } = req.body;
+  
+      // Validate request data
+      if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required.' });
+      }
+  
+      // Check if user exists
+      const user = await User.findOne({ username });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found.' });
+      }
+  
+      // Compare password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid credentials.' });
+      }
+  
+      // Generate JWT token
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET || 'yourJWTSecret',
+        { expiresIn: '1h' }
+      );
+  
+      // Get the user's IP address
+      const userIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  
+      // Fetch location data from ipinfo.io
+      try {
+        const locationResponse = await axios.get(`https://ipinfo.io/${userIp}/json?token=1b2549d3026893`);
+        const locationData = locationResponse.data;
+  
+        // Check if location data is available
+        if (locationData.city && locationData.country) {
+          user.location = {
+            ip: userIp,
+            city: locationData.city,
+            country: locationData.country,
+          };
         } else {
-          city = response.city || 'Unknown';
-          country = response.country || 'Unknown';
+          console.log('Location data is missing city or country', locationData);
         }
+      } catch (error) {
+        console.error('Error fetching location from ipinfo.io:', error);
+      }
+  
+      // Update user info
+      user.lastSeen = Date.now();
+      user.isOnline = true;
+      await user.save();
+  
+      // Return the response
+      res.status(200).json({
+        message: 'Login successful.',
+        userDetails: {
+          id: user._id,
+          fullName: user.fullName,
+          username: user.username,
+          email: user.email,
+          location: user.location, // Include location data
+        },
+        token, // Return token
       });
-    } catch (geoError) {
-      console.error('Error fetching geolocation:', geoError.message);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
     }
+  });
 
-    // Update user's online status and location
-    user.lastOnline = new Date();
-    user.location = { ip: publicIp, city, country }; // Assuming your schema has a `location` field
-    await user.save();
-
-    // Generate JWT token
-    if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET is not defined');
-      throw new Error('JWT_SECRET is missing in environment variables');
-    }
-
-    const token = jwt.sign(
-      { id: user._id, roles: user.roles },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
-    // Customize dashboard message based on roles
-    const dashboardMessage = user.roles.includes('admin')
-      ? 'Welcome Admin! You have access to the Admin Dashboard.'
-      : 'Welcome User! You have access to the User Dashboard.';
-
-    return res.json({
-      message: 'Login successful! You are now logged in.',
-      style: 'success',
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        location: user.location,
-        roles: user.roles,
-      },
-      dashboardMessage,
-    });
-  } catch (error) {
-    console.error('Error during login:', error.message);
-    return res.status(500).json({ message: 'Internal server error', style: 'error' });
-  }
-});
-
-// 1. GET endpoint to fetch user details by username or email
-router.get("/user/details", async (req, res) => {
-  try {
-    const { username, email } = req.query;
-
-    // Validate input
-    if (!username && !email) {
-      return res
-        .status(400)
-        .json({ message: "Username or Email is required to fetch user details" });
-    }
-
-    // Find user by username or email
-    const user = await User.findOne({ $or: [{ username }, { email }] });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Return user details
-    res.json({
-      fullname: user.fullname,
-      username: user.username,
-      email: user.email,
-      wallets: user.wallets,
-      balance: user.balance,
-      totalEarnings: user.totalEarnings,
-      activities: user.activities.slice(0, 5), // Return only the latest 5 activities
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// PUT: Update user details
-router.put('/update', authMiddleware, async (req, res) => {
-  try {
-    const { fullname, username, email, wallets, security } = req.body;
-
-    // Ensure the user is authenticated
-    const userId = req.user.id; // Assuming the auth middleware attaches user info
-
-    // Find the user by ID
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Update the user fields if they are provided
-    if (fullname) user.fullname = fullname;
-    if (username) user.username = username;
-    if (email) user.email = email;
-    if (wallets) user.wallets = wallets; // Wallet addresses can be updated
-    if (security) user.security = security; // Update secret question/answer
-
-    // Save the updated user
-    await user.save();
-
-    res.status(200).json({ message: 'User details updated successfully', user });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Forgot Password: Validate email
+  // Forgotten Password Endpoint
 router.post('/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    // Check if user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.status(200).json({
-      message: 'Email validated. You may now reset your password.',
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Reset Password: Update the password
-router.post('/reset-password', async (req, res) => {
-  try {
-    const { email, newPassword } = req.body;
-
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update user password
-    const updatedUser = await User.findOneAndUpdate(
-      { email },
-      { password: hashedPassword },
-      { new: true }
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.status(200).json({ message: 'Password reset successfully.' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Middleware to find user by ID
-const findUserById = async (req, res, next) => {
     try {
-      const user = await User.findById(req.params.userId);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-      req.user = user; // Attach user to request object
+      const { email } = req.body;
+  
+      // Validate email
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required.' });
+      }
+  
+      // Check if user exists
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: 'User with this email does not exist.' });
+      }
+  
+      // Generate a reset token
+      const resetToken = generateResetToken();
+      const resetTokenExpiry = Date.now() + 3600000; // Token valid for 1 hour
+  
+      // Update user with reset token
+      user.resetToken = resetToken;
+      user.resetTokenExpiry = resetTokenExpiry;
+      await user.save();
+  
+      // Send reset email
+      const resetUrl = `http://yourfrontendurl.com/reset-password?token=${resetToken}`;
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Password Reset Request',
+        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`,
+      };
+  
+      await transporter.sendMail(mailOptions);
+  
+      res.status(200).json({ message: 'Password reset email sent.' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+  });
+  
+  // Reset Password Endpoint
+  router.post('/reset-password', async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+  
+      // Validate input
+      if (!token || !newPassword) {
+        return res.status(400).json({ message: 'Token and new password are required.' });
+      }
+  
+      // Find user by token and check expiry
+      const user = await User.findOne({
+        resetToken: token,
+        resetTokenExpiry: { $gt: Date.now() }, // Ensure token is not expired
+      });
+  
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid or expired token.' });
+      }
+  
+      // Hash the new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+  
+      // Update user password and clear reset token
+      user.password = hashedPassword;
+      user.resetToken = undefined;
+      user.resetTokenExpiry = undefined;
+      await user.save();
+  
+      res.status(200).json({ message: 'Password has been reset successfully.' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+  });
+  
+ // Endpoint to update the balance for Bitcoin, Ethereum, or USDT
+router.put('/update-balance', async (req, res) => {
+    try {
+      const { walletAddress, currency, balanceChange, isWithdrawal } = req.body;  // balanceChange could be positive (deposit) or negative (withdrawal)
+    
+      // Validate inputs
+      if (!walletAddress || !currency || balanceChange === undefined || isWithdrawal === undefined) {
+        return res.status(400).json({ message: 'Wallet address, currency, balance change, and withdrawal status are required.' });
+      }
+    
+      // Validate the currency (can be 'bitcoin', 'ethereum', or 'usdt')
+      const validCurrencies = ['bitcoin', 'ethereum', 'usdt'];
+      if (!validCurrencies.includes(currency)) {
+        return res.status(400).json({ message: 'Invalid currency. Valid options are bitcoin, ethereum, or usdt.' });
+      }
+  
+      // Find the user by wallet address
+      const user = await User.findOne({ walletAddress });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found with this wallet address.' });
+      }
+  
+      // Determine the currency fields based on the selected currency
+      let availableField, pendingField;
+      if (currency === 'bitcoin') {
+        availableField = 'bitcoinAvailable';
+        pendingField = 'bitcoinPending';
+      } else if (currency === 'ethereum') {
+        availableField = 'ethereumAvailable';
+        pendingField = 'ethereumPending';
+      } else if (currency === 'usdt') {
+        availableField = 'usdtAvailable';
+        pendingField = 'usdtPending';
+      }
+  
+      // Handle the deposit (funding the account)
+      if (!isWithdrawal) {
+        user[availableField] += balanceChange; // Add funds to the available balance
+      } else {
+        // Handle withdrawal
+        if (user[availableField] < balanceChange) {
+          return res.status(400).json({ message: `Insufficient ${currency} balance for withdrawal.` });
+        }
+        user[availableField] -= balanceChange; // Deduct funds from the available balance
+        user.totalWithdrawals += balanceChange; // Add the withdrawal amount to totalWithdrawals
+      }
+  
+      // Update the overall available balance
+      user.availableBalance = user.bitcoinAvailable + user.ethereumAvailable + user.usdtAvailable;
+  
+      // Save the updated user object
+      await user.save();
+  
+      // Send a confirmation email for successful deposit
+      if (!isWithdrawal) {
+        const mailOptions = {
+          from: process.env.EMAIL_USER,  // Sender address
+          to: user.email,  // Recipient address (user's email)
+          subject: 'Deposit Successful',  // Email subject
+          text: `Dear ${user.fullName},\n\nYour deposit of ${balanceChange} ${currency} has been successfully credited to your account.\n\nYour new available balance is: ${user.availableBalance}.\n\nThank you for using our service!`,  // Email body
+        };
+  
+        // Send email
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            console.error('Error sending email:', error);
+          } else {
+            console.log('Email sent: ' + info.response);
+          }
+        });
+      }
+  
+      // Return the updated balance information
+      res.status(200).json({
+        message: `${isWithdrawal ? 'Withdrawal' : 'Deposit'} successful.`,
+        availableBalance: user.availableBalance,
+        bitcoinAvailable: user.bitcoinAvailable,
+        ethereumAvailable: user.ethereumAvailable,
+        usdtAvailable: user.usdtAvailable,
+        pendingBalance: user[pendingField],
+        totalWithdrawals: user.totalWithdrawals,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+  });    
+  
+  // Endpoint to get all users
+router.get('/all-users', async (req, res) => {
+    try {
+      // Fetch all users from the database
+      const users = await User.find();
+  
+      // If no users found
+      if (users.length === 0) {
+        return res.status(404).json({ message: 'No users found.' });
+      }
+  
+      // Return the list of users
+      res.status(200).json({
+        message: 'Users fetched successfully.',
+        users: users, // This will return an array of user objects
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+  });
+
+  // Endpoint to handle referral link click
+router.post('/referral-link', async (req, res) => {
+    try {
+      const { referralLink } = req.body; // Referral link that was clicked
+  
+      // Validate that the referral link is provided
+      if (!referralLink) {
+        return res.status(400).json({ message: 'Referral link is required.' });
+      }
+  
+      // Find the user who owns the referral link
+      const referredUser = await User.findOne({ referralLink });
+  
+      if (!referredUser) {
+        return res.status(404).json({ message: 'Referral link is invalid.' });
+      }
+  
+      // Assuming a fixed amount of earnings for each referral click (can be dynamic)
+      const referralEarnings = 10; // For example, $10 per referral click
+  
+      // Update the total earnings of the user who owns the referral link
+      referredUser.totalEarnings += referralEarnings;
+      await referredUser.save(); // Save the updated user
+  
+      // Respond with the updated earnings
+      res.status(200).json({
+        message: 'Referral link clicked successfully.',
+        totalEarnings: referredUser.totalEarnings,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+  });
+
+  const authenticateUser = async (req, res, next) => {
+    try {
+      const userId = req.headers['user-id'] || req.body.userId;
+      if (!userId) {
+        return res.status(400).json({ message: 'User ID is required.' });
+      }
+  
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found.' });
+      }
+  
+      req.user = user; // Attach user to the request object
       next();
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error(error);
+      res.status(500).json({ message: 'Authentication error.' });
     }
   };
   
-  // Get balance
-  router.get('/:userId/balance', findUserById, (req, res) => {
-    const balance = req.user.getBalance();
-    res.status(200).json({ message: 'Balance retrieved successfully', balance });
-  });
   
-  router.post('/:userId/deposit', findUserById, async (req, res) => {
+  router.post('/invest', authenticateUser, async (req, res) => {
     try {
-      const { currency, amount } = req.body;
+      const { selectedPackage, paymentMethod, amount } = req.body;
   
-      if (!currency || amount == null) {
-        return res.status(400).json({ message: 'Currency and amount are required' });
+      if (!selectedPackage || !paymentMethod || !amount) {
+        return res.status(400).json({ message: 'All fields are required.' });
       }
   
-      if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-        return res.status(400).json({ message: `Unsupported currency: ${currency}` });
-      }
+      const newInvestment = {
+        selectedPackage,
+        paymentMethod,
+        amount,
+        status: 'pending',
+      };
   
-      if (typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({ message: 'Amount must be a positive number' });
-      }
-  
-      // Add deposit to user
-      req.user.deposits.push({ currency, amount });
+      req.user.investments.push(newInvestment);
       await req.user.save();
   
-      res.status(201).json({ message: 'Deposit added successfully', deposit: req.user.deposits.slice(-1)[0] });
+      res.status(200).json({ message: 'Investment submitted successfully.', investment: newInvestment });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
     }
   });
   
-  // Update balance (for admins or specific logic)
-router.put('/:userId/balance', findUserById, async (req, res) => {
+  
+  // Get user's pending withdrawals
+  router.get('/withdrawals/pending', authenticateUser, async (req, res) => {
     try {
-      const { currency, amount } = req.body;
-  
-      // Validate input
-      if (!currency || amount == null) {
-        return res.status(400).json({ message: 'Currency and amount are required' });
-      }
-  
-      if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-        return res.status(400).json({ message: `Invalid currency: ${currency}` });
-      }
-  
-      if (typeof amount !== 'number' || amount < 0) {
-        return res.status(400).json({ message: 'Amount must be a non-negative number' });
-      }
-  
-      // Update balance
-      const currentBalance = req.user.balance[currency] || 0;
-      req.user.balance[currency] = amount; // Directly update the balance
-  
-      // Save user
-      await req.user.save();
-  
-      // Send email notification
-      await sendEmail(
-        req.user.email,
-        'Balance Updated',
-        `Hello ${req.user.fullname},\n\nYour ${currency.toUpperCase()} balance has been updated to ${amount}. Previous balance was ${currentBalance}.`
-      );
-  
-      // Respond with success
-      res.status(200).json({
-        message: 'Balance updated successfully',
-        balance: req.user.getBalance(),
-      });
+      const pendingWithdrawals = req.user.investments.filter(investment => investment.status === 'pending');
+      res.status(200).json({ pendingWithdrawals });
     } catch (error) {
-      // Log error for debugging
-      console.error(`Error updating balance for user ${req.params.userId}:`, error.message);
-  
-      res.status(500).json({ message: 'Internal server error' });
-    }
-  });  
-  
-  router.get('/:userId/active-deposits', findUserById, (req, res) => {
-    try {
-      const activeDeposits = req.user.getActiveDeposits();
-      res.status(200).json({
-        message: 'Active deposits retrieved successfully',
-        deposits: activeDeposits,
-      });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
     }
   });
   
-  router.post('/:userId/add-earnings', findUserById, async (req, res) => {
+  // Admin gets all pending withdrawals
+  router.get('/admin/withdrawals/pending', async (req, res) => {
     try {
-      const { amount } = req.body;
+      const users = await User.find({ 'investments.status': 'pending' });
+      const pendingWithdrawals = users.map(user => ({
+        userId: user._id,
+        username: user.username,
+        investments: user.investments.filter(inv => inv.status === 'pending'),
+      }));
   
-      if (!amount || typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({ message: 'Valid earnings amount is required' });
-      }
-  
-      await req.user.addEarnings(amount);
-  
-      res.status(200).json({
-        message: `Earnings added successfully.`,
-        totalEarnings: req.user.getTotalEarnings(),
-      });
+      res.status(200).json({ pendingWithdrawals });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
     }
   });
   
-  router.get('/:userId/total-earnings', findUserById, (req, res) => {
+  // Admin approves or rejects a withdrawal
+  router.post('/admin/withdrawals/:action', async (req, res) => {
     try {
-      res.status(200).json({
-        message: 'Total earnings retrieved successfully.',
-        totalEarnings: req.user.getTotalEarnings(),
-      });
+      const { action } = req.params; // "approve" or "reject"
+      const { userId, investmentIndex } = req.body;
+  
+      if (!userId || investmentIndex === undefined) {
+        return res.status(400).json({ message: 'User ID and investment index are required.' });
+      }
+  
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: 'User not found.' });
+  
+      const investment = user.investments[investmentIndex];
+      if (!investment || investment.status !== 'pending') {
+        return res.status(400).json({ message: 'Invalid or already processed investment.' });
+      }
+  
+      if (action === 'approve') {
+        investment.status = 'approved';
+  
+        // Update user's available balance based on payment method
+        if (investment.paymentMethod === 'bitcoin') {
+          user.bitcoinAvailable += investment.amount;
+        } else if (investment.paymentMethod === 'usdt') {
+          user.usdtAvailable += investment.amount;
+        } else if (investment.paymentMethod === 'ethereum') {
+          user.ethereumAvailable += investment.amount;
+        }
+  
+      } else if (action === 'reject') {
+        investment.status = 'rejected';
+      } else {
+        return res.status(400).json({ message: 'Invalid action.' });
+      }
+  
+      await user.save();
+  
+      res.status(200).json({ message: `Investment ${action}d successfully.`, user });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
     }
   });
   
-  router.post('/:userId/add-activity', findUserById, async (req, res) => {
+  router.post('/referrals/commission', async (req, res) => {
     try {
-      const { action } = req.body;
+      const { username, commissionAmount } = req.body; // Use the username as the referrer identifier
   
-      if (!action) {
-        return res.status(400).json({ message: 'Action description is required' });
+      // Find the user who referred others
+      const user = await User.findOne({ username });
+  
+      if (!user) {
+        return res.status(404).json({ message: 'Referrer not found' });
       }
   
-      await req.user.addActivity(action);
+      // Update total referral earnings
+      user.totalReferralEarnings += commissionAmount;
+  
+      // Update the specific referral if needed
+      const referral = user.referrals.find((ref) => ref.referredBy === username);
+      if (referral) {
+        referral.commission += commissionAmount;
+      }
+  
+      await user.save();
   
       res.status(200).json({
-        message: 'Activity added successfully.',
-        latestActivity: req.user.getLatestActivity(),
+        message: 'Referral commission updated successfully',
+        totalReferralEarnings: user.totalReferralEarnings,
       });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Error updating referral commission', error: error.message });
     }
   });
 
-  router.get('/:userId/latest-activity', findUserById, async (req, res) => {
+  router.put('/profile/update', authenticateUser, async (req, res) => {
     try {
-      const latestActivity = req.user.getLatestActivity();
+      const userId = req.user.id; // Assuming `authenticateUser` attaches the user's ID to `req.user`
+      const { bitcoinWallet, ethereumWallet, usdtWallet, username } = req.body;
   
-      if (!latestActivity) {
-        return res.status(404).json({ message: 'No activities found for this user.' });
+      // Validation
+      if (!bitcoinWallet && !ethereumWallet && !usdtWallet && !username) {
+        return res.status(400).json({ message: 'No fields provided for update.' });
+      }
+  
+      // Check for duplicate username if it's being updated
+      if (username) {
+        const existingUser = await User.findOne({ username, _id: { $ne: userId } });
+        if (existingUser) {
+          return res.status(400).json({ message: 'Username is already taken.' });
+        }
+      }
+  
+      // Update user fields
+      const updatedFields = {};
+      if (bitcoinWallet) updatedFields.bitcoinWallet = bitcoinWallet;
+      if (ethereumWallet) updatedFields.ethereumWallet = ethereumWallet;
+      if (usdtWallet) updatedFields.usdtWallet = usdtWallet;
+      if (username) updatedFields.username = username;
+  
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: updatedFields },
+        { new: true }
+      );
+  
+      if (!updatedUser) {
+        return res.status(404).json({ message: 'User not found.' });
       }
   
       res.status(200).json({
-        message: 'Latest activity retrieved successfully.',
-        latestActivity,
+        message: 'Profile updated successfully.',
+        userDetails: {
+          bitcoinWallet: updatedUser.bitcoinWallet,
+          ethereumWallet: updatedUser.ethereumWallet,
+          usdtWallet: updatedUser.usdtWallet,
+          username: updatedUser.username,
+        },
       });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      console.error('Error updating profile:', error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
     }
   });
   
-// Get user activities for the dashboard
-router.get('/dashboard/activities', authenticateUser, async (req, res) => {
+  // Endpoint to retrieve user activity
+router.get('/profile/activity', authenticateUser, async (req, res) => {
   try {
-    // Retrieve the authenticated user's activities
-    const user = await User.findById(req.user.id).select('activities'); // `req.user` is set by `authenticateUser`
-    
+    const userId = req.user.id; // Assuming the `authenticateUser` middleware adds the user's ID to `req.user`
+
+    // Fetch user details
+    const user = await User.findById(userId).select(
+      'username email bitcoinAvailable ethereumAvailable usdtAvailable referrals totalWithdrawals totalEarnings investments lastSeen isOnline location'
+    );
+
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    // Optionally limit to the last 10 activities for the dashboard
-    const recentActivities = user.activities.slice(0, 10);
+    // Structure the activity data
+    const activityData = {
+      username: user.username,
+      email: user.email,
+      walletBalances: {
+        bitcoin: {
+          available: user.bitcoinAvailable,
+        },
+        ethereum: {
+          available: user.ethereumAvailable,
+        },
+        usdt: {
+          available: user.usdtAvailable,
+        },
+      },
+      referrals: user.referrals,
+      totalWithdrawals: user.totalWithdrawals,
+      totalEarnings: user.totalEarnings,
+      investments: user.investments,
+      lastSeen: user.lastSeen,
+      isOnline: user.isOnline,
+      location: user.location,
+    };
 
+    // Return the structured activity data
     res.status(200).json({
-      message: 'User activities retrieved successfully.',
-      activities: recentActivities,
+      message: 'User activity retrieved successfully.',
+      activity: activityData,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching activities.', error: error.message });
+    console.error('Error fetching user activity:', error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
 
-router.post('/invest', async (req, res) => {
-    try {
-      const { userId, investmentPlan, amount, paymentMethod, reInvest } = req.body;
-  
-      // Find the user by ID
-      const user = await User.findById(userId);
-  
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-  
-      // Logic for investment
-      const investmentSource = reInvest ? 're-investment' : 'new investment';
-  
-      // Handle re-investment logic
-      if (reInvest) {
-        if (user.balance.usdt < amount) {
-          return res.status(400).json({ error: 'Insufficient balance for re-investment' });
-        }
-        user.balance.usdt -= amount; // Deduct from balance
-      }
-  
-      // Save the investment in the Investment collection
-      const investment = new Investment({
-        userId,
-        investmentPlan,
-        amount,
-        paymentMethod,
-        status: 'active',
-      });
-  
-      await investment.save(); // Save investment
-  
-      // Update user's deposits
-      user.deposits.push({
-        amount,
-        currency: 'usdt', // Assuming USDT for this example
-        status: 'active', // Status can be adjusted based on the logic
-      });
-  
-      // Log the investment activity
-      if (!Array.isArray(user.activities)) {
-        user.activities = []; // Initialize if undefined
-      }
-  
-      user.activities.unshift({
-        action: `Made an investment using ${investmentSource}`,
-        investmentPlan,
-        amount,
-        paymentMethod: reInvest ? 're-invest' : paymentMethod,
-      });
-  
-      // Optionally update total earnings
-      user.totalEarnings += amount;
-  
-      // Save the updated user
-      await user.save();
-  
-      res.status(200).json({
-        message: `Investment successfully processed as ${investmentSource}`,
-        user,
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Internal Server Error' });
-    }
-  });    
 
-// POST endpoint for user withdrawal
-router.post('/withdraw', async (req, res) => {
-  try {
-    const { userId, currency, amount } = req.body;
-
-    // Validate the request
-    if (!userId || !currency || !amount) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-
-    // Check if the currency is valid
-    const validCurrencies = ['usdt', 'ethereum', 'bitcoin'];
-    if (!validCurrencies.includes(currency)) {
-      return res.status(400).json({ success: false, message: 'Invalid currency' });
-    }
-
-    // Find the user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    // Check if the user has sufficient balance
-    if (user.balance[currency] < amount) {
-      return res.status(400).json({ success: false, message: `Insufficient ${currency} balance` });
-    }
-
-    // Create a pending withdrawal request
-    user.withdrawals.push({
-      amount,
-      currency,
-      status: 'pending',
-    });
-
-    // Save the user with the pending withdrawal
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Withdrawal request submitted successfully. Pending admin approval.',
-      withdrawal: {
-        currency,
-        amount,
-        status: 'pending',
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+const authenticateAdmin = async (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication required.' });
   }
-});
 
-// Admin approves or rejects a withdrawal request
-router.post('/approve-withdrawal', async (req, res) => {
   try {
-    const { userId, withdrawalId, status } = req.body;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
 
-    // Validate request
-    if (!userId || !withdrawalId || !['completed', 'rejected'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid request data' });
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied.' });
     }
-
-    // Find the user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    // Find the pending withdrawal
-    const withdrawal = user.withdrawals.id(withdrawalId);
-    if (!withdrawal || withdrawal.status !== 'pending') {
-      return res.status(404).json({ success: false, message: 'Withdrawal not found or already processed' });
-    }
-
-    // Process the withdrawal
-    if (status === 'completed') {
-      if (user.balance[withdrawal.currency] < withdrawal.amount) {
-        return res.status(400).json({ success: false, message: `Insufficient ${withdrawal.currency} balance` });
-      }
-
-      // Deduct the amount from the user's balance
-      user.balance[withdrawal.currency] -= withdrawal.amount;
-    }
-
-    // Update the withdrawal status
-    withdrawal.status = status;
-
-    // Save the user
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: `Withdrawal ${status} successfully`,
-      withdrawal,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
-
-  router.get('/user/history/:username', async (req, res) => {
-    const { username } = req.params;
-    console.log("Received username:", username); // Log the username to check the parameter value
-  
-    try {
-      const user = await User.findOne({ username });
-  
-      if (!user) {
-        console.log("User not found:", username); // Log if user is not found
-        return res.status(404).json({ message: 'User not found' });
-      }
-  
-      // Extract user history data
-      const history = {
-        fullname: user.fullname,
-        username: user.username,
-        email: user.email, // Include email
-        balance: user.getBalance(),
-        deposits: user.deposits,
-        withdrawals: user.withdrawals,
-        activities: user.activities,
-        totalEarnings: user.getTotalEarnings(),
-      };
-  
-      return res.status(200).json({
-        message: 'User history fetched successfully',
-        history,
-      });
-    } catch (error) {
-      console.error('Error fetching user history:', error.message);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  });
-  
-// Middleware to fetch user by username
-const getUser = async (req, res, next) => {
-  try {
-    const user = await User.findOne({ username: req.params.username });
-    if (!user) return res.status(404).json({ message: 'User not found' });
 
     req.user = user;
     next();
-  } catch (err) {
-    res.status(500).json({ message: 'Server error: ' + err.message });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token.' });
   }
 };
 
-// Helper function for amount validation
-const validateAmount = (amount) => {
-  return typeof amount === 'number' && amount > 0;
-};
-
-// Mock conversion rates for currency
-const currencyRates = {
-  usdt: 1,
-  ethereum: 2500, // 1 ETH = $2500
-  bitcoin: 30000, // 1 BTC = $30,000
-};
-
-// POST: Add or reinvest in an investment plan
-router.post('/:username/invest', getUser, async (req, res) => {
-  const { plan, amount, currency } = req.body;
-
-  // Input Validation
-  if (!['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'].includes(plan)) {
-    return res.status(400).json({ message: 'Invalid investment plan' });
-  }
-
-  if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-    return res.status(400).json({ message: 'Invalid currency' });
-  }
-
-  if (!validateAmount(amount)) {
-    return res.status(400).json({ message: 'Amount must be a positive number' });
-  }
-
-  // Optional: Define minimum investment amounts for plans
-  const minInvestment = {
-    STARTER: 50,
-    'CRYPTO PLAN': 100,
-    'ADVANCED PLAN': 200,
-    'PAY PLAN': 500,
-    'PREMIUM PLAN': 1000,
-  };
-
-  if (amount < minInvestment[plan]) {
-    return res.status(400).json({
-      message: `Minimum investment for ${plan} is ${minInvestment[plan]} USD`,
-    });
-  }
+// Admin endpoint to manage user accounts
+router.post('/admin/manage-user', authenticateAdmin, async (req, res) => {
+  const { action, userId } = req.body;
 
   try {
-    // Convert the amount to USD using currency rates (if not in USDT)
-    const amountInUSD = amount * currencyRates[currency];
-
-    // Add or reinvest in the plan
-    await req.user.addOrReinvestInvestment(plan, amountInUSD, currency);
-
-    // Calculate the total investment amount
-    const totalInvestment = req.user.investments.reduce((total, inv) => total + inv.amount, 0);
-
-    res.status(201).json({
-      message: `Investment in ${plan} updated successfully`,
-      investments: req.user.investments,
-      totalInvestment: `${totalInvestment} USD`,
-    });
-  } catch (err) {
-    res.status(500).json({ message: 'Investment failed: ' + err.message });
-  }
-});
-
-// GET: Fetch user investments
-router.get('/:username/investments', getUser, (req, res) => {
-  const totalInvestment = req.user.investments.reduce((total, inv) => total + inv.amount, 0);
-  res.status(200).json({
-    investments: req.user.investments,
-    totalInvestment: `${totalInvestment} USD`,
-  });
-});
-
-// Endpoint: Update user wallet by username
-router.put('/user/update-wallet/:username', async (req, res) => {
-  const { username } = req.params;
-  const { bitcoin, ethereum, usdt } = req.body;
-
-  try {
-    // Find the user by username
-    const user = await User.findOne({ username });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    // Ensure required fields are provided
+    if (!action || !userId) {
+      return res.status(400).json({ message: 'Action and userId are required.' });
     }
 
-    // Update wallet addresses
-    user.wallets.bitcoin = bitcoin || user.wallets.bitcoin;
-    user.wallets.ethereum = ethereum || user.wallets.ethereum;
-    user.wallets.usdt = usdt || user.wallets.usdt;
-
-    // Save the updated user data
-    await user.save();
-
-    return res.status(200).json({
-      message: 'Wallet updated successfully',
-      user,
-    });
-  } catch (error) {
-    console.error('Error updating wallet:', error.message);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-
-// admin
-router.get('/admin/users', async (req, res) => {
-  try {
-    const users = await User.find();
-
-    // Fetch the country flags for each user
-    const userDetails = await Promise.all(users.map(async (user) => {
-      // Default location if not available
-      let city = 'Unknown';
-      let country = 'Unknown';
-      let countryFlag = '';
-
-      if (user.location && user.location.country) {
-        country = user.location.country;
-        // Fetch country flag from restcountries API
-        try {
-          const countryResponse = await axios.get(`https://restcountries.com/v3.1/name/${country}`);
-          countryFlag = countryResponse.data[0].flags.png || '';
-        } catch (error) {
-          console.error('Error fetching country flag:', error.message);
-        }
-      }
-
-      // Check if the user is online (last activity within 5 minutes)
-      const isOnline = user.lastOnline && (new Date() - new Date(user.lastOnline)) < 5 * 60 * 1000;
-
-      return {
-        ...user._doc, 
-        online: isOnline,
-        countryFlag,
-        city,
-        country,
-      };
-    }));
-
-    return res.status(200).json({
-      success: true,
-      message: 'All users retrieved successfully',
-      data: userDetails,
-    });
-  } catch (error) {
-    console.error('Error fetching users:', error.message);
-    return res.status(500).json({
-      success: false,
-      message: 'An error occurred while retrieving users',
-      error: error.message,
-    });
-  }
-});
-
-
-
-// Endpoint to delete a specific user by user ID
-router.delete('/admin/users/:userId', async (req, res) => {
-  try {
-    // Extract the userId from the request params
-    const { userId } = req.params;
-
-    // Attempt to find and delete the user
-    const user = await User.findByIdAndDelete(userId);
-
-    // Check if the user was found and deleted
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Send success response
-    return res.status(200).json({
-      success: true,
-      message: 'User deleted successfully',
-    });
-  } catch (error) {
-    // Handle any errors
-    console.error('Error deleting user:', error.message);
-    return res.status(500).json({
-      success: false,
-      message: 'An error occurred while deleting the user',
-      error: error.message,
-    });
-  }
-});
-
-
-// POST endpoint to save or update wallet addresses
-router.post("/api/wallets", async (req, res) => {
-  try {
-    const { email, bitcoinAddress, ethereumAddress, usdtAddress } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
-
-    // Find user by email
-    let user = await Wallet.findOne({ email });
-
-    if (!user) {
-      // Create a new record if user doesn't exist
-      user = new Wallet({
-        email,
-        bitcoinAddress: bitcoinAddress || null,
-        ethereumAddress: ethereumAddress || null,
-        usdtAddress: usdtAddress || null
-      });
-      await user.save();
-      return res.status(201).json({
-        message: "Wallet details saved successfully.",
-        data: user
-      });
-    }
-
-    // Update existing user details
-    user.bitcoinAddress = bitcoinAddress || user.bitcoinAddress;
-    user.ethereumAddress = ethereumAddress || user.ethereumAddress;
-    user.usdtAddress = usdtAddress || user.usdtAddress;
-
-    await user.save();
-
-    return res.status(200).json({
-      message: "Wallet details updated successfully.",
-      data: user
-    });
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error occurred." });
-  }
-});
-
-// GET endpoint to retrieve wallet details by email
-router.get("/api/wallets/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-
-    const user = await Wallet.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    return res.status(200).json({
-      message: "Wallet details retrieved successfully.",
-      data: user
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error occurred." });
-  }
-});
-
-// Endpoint to get user wallet details by email
-router.get("/api/wallets", async (req, res) => {
-  try {
-    const { email } = req.query;
-
-    if (!email) {
-      return res.status(400).json({ message: "User email is required." });
-    }
-
-    // Fetch user wallet details
-    const user = await Wallet.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({ message: "User wallet details not found." });
-    }
-
-    return res.status(200).json({
-      message: "User wallet details retrieved successfully.",
-      data: {
-        email: user.email,
-        bitcoinAddress: user.bitcoinAddress,
-        ethereumAddress: user.ethereumAddress,
-        usdtAddress: user.usdtAddress,
-      },
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error occurred." });
-  }
-});
-
-// POST: Save user message
-router.post("/api/messages/send", async (req, res) => {
-  try {
-    const { firstName, lastName, phone, email, message } = req.body;
-
-    // Validate required fields
-    if (!firstName || !lastName || !phone || !email || !message) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
-
-    // Create a new message entry
-    const newMessage = new Message({
-      firstName,
-      lastName,
-      phone,
-      email,
-      message
-    });
-
-    // Save the message to the database
-    await newMessage.save();
-
-    return res.status(201).json({
-      message: "Your message has been sent successfully.",
-      data: newMessage
-    });
-  } catch (error) {
-    console.error("Error saving message:", error);
-    return res.status(500).json({ message: "Server error occurred." });
-  }
-});
-
-// GET: Admin retrieves messages by email
-router.get("/api/messages/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-
-    // Find messages by email
-    const messages = await Message.find({ email });
-
-    if (messages.length === 0) {
-      return res.status(404).json({ message: "No messages found for this email." });
-    }
-
-    return res.status(200).json({
-      message: "Messages retrieved successfully.",
-      data: messages
-    });
-  } catch (error) {
-    console.error("Error retrieving messages:", error);
-    return res.status(500).json({ message: "Server error occurred." });
-  }
-});
-
-// Admin funding endpoint
-// router.post('/admin/fund-user', async (req, res) => {
-//   try {
-//     const { walletAddress, amount, currency } = req.body;
-
-//     // Input validation
-//     if (!walletAddress || !amount || !currency) {
-//       return res.status(400).json({ message: "Wallet address, amount, and currency are required." });
-//     }
-
-//     if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-//       return res.status(400).json({ message: "Invalid currency type. Use 'usdt', 'ethereum', or 'bitcoin'." });
-//     }
-
-//     if (amount <= 0) {
-//       return res.status(400).json({ message: "Amount must be greater than zero." });
-//     }
-
-//     // Find the user by wallet address
-//     const user = await User.findOne({ walletAddress });
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found with the provided wallet address." });
-//     }
-
-//     // Update user's balance
-//     user.balance[currency] += amount;
-
-//     // Add an activity log
-//     await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
-
-//     // Save updated user data
-//     await user.save();
-
-//     return res.status(200).json({
-//       message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
-//       user: {
-//         fullname: user.fullname,
-//         walletAddress: user.walletAddress,
-//         balance: user.getBalance(),
-//       },
-//     });
-//   } catch (err) {
-//     console.error("Error funding user:", err);
-//     return res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
-//   }
-// });
-
-router.post('/admin/fund-user', async (req, res) => {
-  try {
-    const { walletAddress, amount, currency } = req.body;
-
-    // Input validation
-    if (!walletAddress || !amount || !currency) {
-      return res.status(400).json({ message: "Wallet address, amount, and currency are required." });
-    }
-
-    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-      return res.status(400).json({ message: "Invalid currency type. Use 'usdt', 'ethereum', or 'bitcoin'." });
-    }
-
-    if (amount <= 0) {
-      return res.status(400).json({ message: "Amount must be greater than zero." });
-    }
-
-    // Validate custom wallet address format
-    const isValidWallet = /^[a-z0-9]{32}$/.test(walletAddress);
-    if (!isValidWallet) {
-      return res.status(400).json({ message: "Invalid custom wallet address format." });
-    }
-
-    // Find the user by wallet address
-    const user = await User.findOne({ walletAddress });
-    if (!user) {
-      return res.status(404).json({ message: "User not found with the provided wallet address." });
-    }
-
-    // Validate and update user's balance
-    if (!user.balance || typeof user.balance[currency] !== 'number') {
-      return res.status(400).json({ message: "User's balance structure is invalid or incomplete." });
-    }
-    user.balance[currency] += amount;
-
-    // Add an activity log
-    await user.addActivity(`Admin funded ${amount} ${currency.toUpperCase()} to your account.`);
-
-    // Save updated user data
-    await user.save();
-
-    // Send the response to the client
-    res.status(200).json({
-      message: `Successfully funded ${amount} ${currency.toUpperCase()} to user.`,
-      user: {
-        fullname: user.fullname,
-        walletAddress: user.walletAddress,
-        balance: user.getBalance(),
-      },
-    });
-
-    // Prepare email details
-    const emailSubject = 'Funds Deposited';
-    const emailHtml = `
-      <p>Dear ${user.fullname},</p>
-      <p>Your account has been credited with <strong>${amount} ${currency.toUpperCase()}</strong>.</p>
-      <p>Thank you,<br>Admin</p>
-    `;
-
-    // Send email notification
-    try {
-      await sendEmail(user.email, emailSubject, "", emailHtml);
-      console.log("Email sent successfully.");
-    } catch (emailError) {
-      console.error("Failed to send email notification:", emailError);
-    }
-
-  } catch (err) {
-    console.error("Error funding user:", err);
-    res.status(500).json({ message: "An error occurred while funding the user.", error: err.message });
-  }
-});
-
-// Get user balance
-router.get("/user/balance/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Fetch balance, active deposits, withdrawals, and earnings
-    const balance = user.getBalance();
-    const activeDeposits = user.getActiveDeposits().reduce((sum, d) => sum + d.amount, 0);
-    const totalWithdrawals = user.withdrawals.reduce((sum, w) => sum + w.amount, 0);
-    const totalEarnings = user.getTotalEarnings();
-
-    res.json({
-      balance,
-      activeDeposit: activeDeposits,
-      totalWithdrawals,
-      earningTotal: totalEarnings,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-
-// Endpoint for users to fund their account
-// router.post("/fund", async (req, res) => {
-//   const { walletAddress, amount, currency } = req.body;
-
-//   try {
-//     // Validate the request
-//     if (!walletAddress || !amount || !currency) {
-//       return res.status(400).json({ message: "All fields are required." });
-//     }
-
-//     // Find the user by wallet address
-//     const user = await User.findOne({ walletAddress });
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found with the given wallet address." });
-//     }
-
-//     // Create a new deposit request
-//     const newDeposit = {
-//       amount,
-//       currency,
-//       status: "active", // Start as pending admin approval
-//     };
-
-//     user.deposits.push(newDeposit);
-
-//     // Log the activity
-//     await user.addActivity(`Created a funding request for ${amount} ${currency}`);
-
-//     // Save the user with the new deposit
-//     await user.save();
-
-//     return res.status(201).json({ message: "Funding request created successfully." });
-//   } catch (error) {
-//     console.error("Error creating funding request:", error);
-//     return res.status(500).json({ message: "An error occurred. Please try again later." });
-//   }
-// });
-
-// Endpoint for admin to approve funding
-router.post("/approve-fund", async (req, res) => {
-  const { depositId, walletAddress } = req.body;
-
-  try {
-    // Validate the request
-    if (!depositId || !walletAddress) {
-      return res.status(400).json({ message: "Deposit ID and wallet address are required." });
-    }
-
-    // Find the user by wallet address
-    const user = await User.findOne({ walletAddress });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found with the given wallet address." });
-    }
-
-    // Find the deposit
-    const deposit = user.deposits.id(depositId);
-
-    if (!deposit || deposit.status !== "active") {
-      return res.status(404).json({ message: "Deposit not found or already processed." });
-    }
-
-    // Approve the deposit
-    deposit.status = "completed";
-    user.balance[deposit.currency] += deposit.amount; // Update the user's balance
-
-    // Log the activity
-    await user.addActivity(
-      `Admin approved funding of ${deposit.amount} ${deposit.currency}`
-    );
-
-    // Save the user
-    await user.save();
-
-    return res.status(200).json({ message: "Funding approved successfully." });
-  } catch (error) {
-    console.error("Error approving funding:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
-
-// Endpoint to get all pending deposits for admin approval
-router.get("/admin/deposits/pending", async (req, res) => {
-  try {
-    // Fetch all users with pending deposits
-    const users = await User.find({ "deposits.status": "active" });
-
-    // Extract pending deposits with user details
-    const pendingDeposits = users.flatMap((user) =>
-      user.deposits
-        .filter((deposit) => deposit.status === "active")
-        .map((deposit) => ({
-          userId: user._id,
-          username: user.username,
-          email: user.email,
-          walletAddress: user.walletAddress,
-          depositId: deposit._id,
-          amount: deposit.amount,
-          currency: deposit.currency,
-          createdAt: deposit.createdAt,
-        }))
-    );
-
-    return res.status(200).json({ pendingDeposits });
-  } catch (error) {
-    console.error("Error fetching pending deposits:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
-
-// Endpoint to approve or reject a deposit
-router.post("/admin/deposits/:depositId/approve", async (req, res) => {
-  const { depositId } = req.params;
-  const { status } = req.body; // `completed` or `cancelled`
-
-  try {
-    // Validate status
-    if (!["completed", "cancelled"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status. Use 'completed' or 'cancelled'." });
-    }
-
-    // Find the user with the deposit
-    const user = await User.findOne({ "deposits._id": depositId });
-
-    if (!user) {
-      return res.status(404).json({ message: "Deposit not found." });
-    }
-
-    // Find the specific deposit
-    const deposit = user.deposits.id(depositId);
-
-    if (!deposit) {
-      return res.status(404).json({ message: "Deposit not found." });
-    }
-
-    // Update the deposit status
-    deposit.status = status;
-
-    // If approved, update the user's balance
-    if (status === "completed") {
-      user.balance[deposit.currency] += deposit.amount;
-
-      // Log the activity
-      await user.addActivity(`Admin approved deposit of ${deposit.amount} ${deposit.currency}.`);
-    } else {
-      // Log the rejection
-      await user.addActivity(`Admin rejected deposit of ${deposit.amount} ${deposit.currency}.`);
-    }
-
-    // Save the user with the updated deposit
-    await user.save();
-
-    return res.status(200).json({ message: `Deposit ${status} successfully.` });
-  } catch (error) {
-    console.error("Error approving/rejecting deposit:", error);
-    return res.status(500).json({ message: "An error occurred. Please try again later." });
-  }
-});
-
-// Route to get user online status
-router.get('/user/:id/status', async (req, res) => {
-  try {
-    const userId = req.params.id; // Get user ID from request params
-    const user = await User.findById(userId); // Find the user in the database
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const statusMessage = user.getOnlineStatus(); // Call the method to get the status
-    res.json({ status: statusMessage }); // Send the status as response
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-
-// User deposit endpoint with token-based userId extraction
-router.post('/user/deposit', authenticateUser, async (req, res) => {
-  const { amount, currency, plan } = req.body;
-
-  try {
-    if (!['usdt', 'ethereum', 'bitcoin'].includes(currency)) {
-      return res.status(400).json({ error: 'Invalid currency' });
-    }
-    if (!['STARTER', 'CRYPTO PLAN', 'ADVANCED PLAN', 'PAY PLAN', 'PREMIUM PLAN'].includes(plan)) {
-      return res.status(400).json({ error: 'Invalid plan' });
-    }
-
-    const user = await User.findById(req.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.deposits.push({ amount, currency });
-    user.addOrReinvestInvestment(plan, amount, currency);
-    await user.save();
-
-    res.status(201).json({
-      message: 'Deposit created successfully',
-      deposit: { amount, currency, status: 'active' },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST to create a new investment
-router.post('/investment/:userId/create', async (req, res) => {
-  const { userId } = req.params;
-  const { investmentPlan, amount, currency, paymentMethod } = req.body;
-
-  try {
-    // Find the user
+    // Fetch the user by ID
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'User not found.' });
     }
 
-    // Create the investment without checking the balance
-    const newInvestment = {
-      investmentPlan,
-      paymentMethod,
-      amount,
-      currency,
-      status: 'pending',  // Set status to 'pending' automatically
-    };
+    // Handle the requested action
+    switch (action) {
+      case 'verify-email':
+        user.emailVerified = true; // Assuming an `emailVerified` field in the schema
+        await user.save();
+        return res.status(200).json({ message: 'Email verified successfully.' });
 
-    user.investments.push(newInvestment); // Add the new investment
+      case 'disable-account':
+        user.isDisabled = true; // Assuming an `isDisabled` field in the schema
+        await user.save();
+        return res.status(200).json({ message: 'Account disabled successfully.' });
 
-    await user.save(); // Save the updated user document
+      case 'suspend-account':
+        user.isSuspended = true; // Assuming an `isSuspended` field in the schema
+        await user.save();
+        return res.status(200).json({ message: 'Account suspended successfully.' });
 
-    res.status(201).json({ message: 'Investment created successfully', investment: newInvestment });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
+      default:
+        return res.status(400).json({ message: 'Invalid action provided.' });
+    }
+  } catch (error) {
+    console.error('Error managing user account:', error);
+    return res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
-
-// POST to reinvest in a plan
-router.post('/investment/:userId/reinvest', async (req, res) => {
-  const { userId } = req.params;
-  const { investmentPlan, amount, currency, paymentMethod } = req.body;
-
-  try {
-    // Find the user by ID
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Create the reinvestment (set status to 'pending' without checking balance)
-    const newInvestment = {
-      investmentPlan,
-      paymentMethod,
-      amount,
-      currency,
-      status: 'pending',  // Automatically set to 'pending'
-    };
-
-    // Add the new reinvestment to the user's investments
-    user.investments.push(newInvestment);
-
-    // Save the updated user document
-    await user.save();
-
-    // Return the success response
-    res.status(201).json({
-      message: 'Reinvestment created successfully',
-      investment: newInvestment,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-router.get('/investments/pending', async (req, res) => {
-  try {
-    // Find all users with investments that are pending
-    const users = await User.find({ 'investments.status': 'pending' }).populate('investments');
-
-    // Gather all pending investments from all users
-    const pendingInvestments = [];
-    users.forEach(user => {
-      user.investments.forEach(investment => {
-        if (investment.status === 'pending') {
-          pendingInvestments.push({
-            investmentId: investment._id, // Include the investment ID
-            userId: user._id,
-            investmentPlan: investment.investmentPlan,
-            amount: investment.amount,
-            currency: investment.currency,
-            paymentMethod: investment.paymentMethod,
-            status: investment.status,
-          });
-        }
-      });
-    });
-
-    // If no pending investments, return an appropriate message
-    if (pendingInvestments.length === 0) {
-      return res.status(404).json({ message: 'No pending investments found' });
-    }
-
-    // Respond with the list of pending investments
-    res.status(200).json({
-      message: 'Pending investments retrieved successfully',
-      pendingInvestments,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-// PATCH to approve or reject an investment
-router.patch('/investment/:investmentId/status', async (req, res) => {
-  const { investmentId } = req.params;
-  const { status } = req.body;
-
-  // Validate the status
-  if (status !== 'approved' && status !== 'rejected') {
-    return res.status(400).json({ message: 'Invalid status. Must be "approved" or "rejected".' });
-  }
-
-  try {
-    // Find the investment by ID
-    const user = await User.findOne({ 'investments._id': investmentId });
-    
-    if (!user) {
-      return res.status(404).json({ message: 'Investment not found' });
-    }
-
-    // Find the specific investment within the user's investments array
-    const investment = user.investments.id(investmentId);
-
-    if (!investment) {
-      return res.status(404).json({ message: 'Investment not found' });
-    }
-
-    // Update the investment's status
-    investment.status = status;
-
-    // Save the updated user document with the modified investment
-    await user.save();
-
-    res.status(200).json({
-      message: `Investment ${status} successfully`,
-      investment: {
-        investmentPlan: investment.investmentPlan,
-        amount: investment.amount,
-        currency: investment.currency,
-        paymentMethod: investment.paymentMethod,
-        status: investment.status,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
 module.exports = router;
