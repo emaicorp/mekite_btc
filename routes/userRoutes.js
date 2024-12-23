@@ -35,104 +35,107 @@ const transporter = nodemailer.createTransport({
 
 router.post('/register', async (req, res) => {
   try {
-      const {
-          fullName,
-          username,
-          password,
-          email,
-          recoveryQuestion,
-          recoveryAnswer,
-          agreedToTerms,
-          referredBy, // For referral
-          bitcoinWallet, // Optional
-          ethereumWallet, // Optional
-          usdtWallet, // Optional
-      } = req.body;
+    const {
+      fullName,
+      username,
+      password,
+      email,
+      recoveryQuestion,
+      recoveryAnswer,
+      agreedToTerms,
+      referredBy,
+      bitcoinWallet,
+      ethereumWallet,
+      usdtWallet,
+    } = req.body;
 
-      // Validation
-      if (
-          !fullName ||
-          !username ||
-          !password ||
-          !email ||
-          !recoveryQuestion ||
-          !recoveryAnswer ||
-          !agreedToTerms
-      ) {
-          return res.status(400).json({ message: 'All required fields must be filled.' });
+    // Validation
+    if (
+      !fullName ||
+      !username ||
+      !password ||
+      !email ||
+      !recoveryQuestion ||
+      !recoveryAnswer ||
+      !agreedToTerms
+    ) {
+      return res.status(400).json({ message: 'All required fields must be filled.' });
+    }
+
+    // Check for existing user
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Username or email already exists.' });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Generate wallet address and referral link
+    const walletAddress = generateWalletAddress();
+    const referralLink = generateReferralLink(username);
+
+    // Handle referrals
+    if (referredBy) {
+      const referrer = await User.findOne({ username: referredBy });
+      if (referrer) {
+        referrer.referrals.push({
+          referredBy: referrer.username,
+          status: 'active',
+          commission: 0,
+        });
+        await referrer.save();
+      } else {
+        return res.status(404).json({ message: 'Referrer not found.' });
       }
+    }
 
-      // Check for existing user
-      const existingUser = await User.findOne({ $or: [{ username }, { email }] });
-      if (existingUser) {
-          return res.status(400).json({ message: 'Username or email already exists.' });
-      }
+    // Create new user
+    const newUser = new User({
+      fullName,
+      username,
+      password: hashedPassword,
+      email,
+      recoveryQuestion,
+      recoveryAnswer,
+      walletAddress,
+      referralLink,
+      agreedToTerms,
+      bitcoinWallet,
+      ethereumWallet,
+      usdtWallet,
+    });
 
-      // Hash the password
-      const hashedPassword = await bcrypt.hash(password, 10);
+    await newUser.save();
 
-      // Generate wallet address and referral link
-      const walletAddress = generateWalletAddress();
-      const referralLink = generateReferralLink(username);
-
-      // Create new user
-      const newUser = new User({
-          fullName,
-          username,
-          password: hashedPassword,
-          email,
-          recoveryQuestion,
-          recoveryAnswer,
-          walletAddress,
-          referralLink,
-          agreedToTerms,
-          bitcoinWallet, // Add if provided
-          ethereumWallet, // Add if provided
-          usdtWallet, // Add if provided
-      });
-
-      // Handle referrals
-      if (referredBy) {
-          const referrer = await User.findOne({ username: referredBy });
-          if (referrer) {
-              referrer.referrals.push({
-                  referredBy: referrer.username,
-                  status: 'active',
-                  commission: 0,
-              });
-
-              await referrer.save();
-          } else {
-              return res.status(404).json({ message: 'Referrer not found.' });
-          }
-      }
-
-      // Save the new user
-      await newUser.save();
-
-      // Send email with wallet address and referral link
+    // Send email with wallet address and referral link
+    try {
       const mailOptions = {
-          from: process.env.EMAIL_USER,
-          to: email,
-          subject: 'Welcome to Your App',
-          text: `Hello ${fullName},\n\nThank you for registering. Here are your details:\n\nWallet Address: ${walletAddress}\nReferral Link: ${referralLink}\n\nBest regards,\nYour App Team`,
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Welcome to Your App',
+        text: `Hello ${fullName},\n\nThank you for registering. Here are your details:\n\nWallet Address: ${walletAddress}\nReferral Link: ${referralLink}\n\nBest regards,\nYour App Team`,
       };
 
       await transporter.sendMail(mailOptions);
+    } catch (emailError) {
+      console.error('Email sending failed:', emailError);
+      return res.status(500).json({ message: 'User registered but email sending failed.' });
+    }
 
-      res.status(201).json({
-          message: 'User registered successfully. Wallet address and referral link sent to email.',
-          userDetails: {
-              fullName,
-              username,
-              email,
-              walletAddress,
-              referralLink,
-          },
-      });
+    res.status(201).json({
+      message: 'User registered successfully. Wallet address and referral link sent to email.',
+      userDetails: {
+        fullName,
+        username,
+        email,
+        walletAddress,
+        referralLink,
+      },
+    });
   } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error. Please try again later.' });
+    console.error('Error during registration:', error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
 
@@ -745,6 +748,58 @@ router.post('/admin/manage-user', authenticateAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error managing user account:', error);
     return res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
+
+router.put('/user/profile', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id; // Assume `authenticateUser` adds `user` to `req`
+    const {
+      fullName,
+      username,
+      email,
+      recoveryQuestion,
+      recoveryAnswer,
+      bitcoinWallet,
+      ethereumWallet,
+      usdtWallet,
+      location,
+    } = req.body;
+
+    // Validate fields (you can use a validation library like Joi for more complex validation)
+    if (!fullName || !username || !email) {
+      return res.status(400).json({ message: 'Full name, username, and email are required.' });
+    }
+
+    // Find and update the user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          fullName,
+          username,
+          email,
+          recoveryQuestion,
+          recoveryAnswer,
+          bitcoinWallet,
+          ethereumWallet,
+          usdtWallet,
+          'location.ip': location?.ip,
+          'location.country': location?.country,
+          'location.city': location?.city,
+        },
+      },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    res.status(200).json({ message: 'Profile updated successfully.', user: updatedUser });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'An error occurred while updating the profile.', error });
   }
 });
 module.exports = router;
