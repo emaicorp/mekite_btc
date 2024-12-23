@@ -466,32 +466,47 @@ router.post('/referral-link', async (req, res) => {
       res.status(500).json({ message: 'Authentication error.' });
     }
   };
-  
-  
-  router.post('/invest', authenticateUser, async (req, res) => {
-    try {
-      const { selectedPackage, paymentMethod, amount } = req.body;
-  
-      if (!selectedPackage || !paymentMethod || !amount) {
-        return res.status(400).json({ message: 'All fields are required.' });
-      }
-  
-      const newInvestment = {
-        selectedPackage,
-        paymentMethod,
-        amount,
-        status: 'pending',
-      };
-  
-      req.user.investments.push(newInvestment);
-      await req.user.save();
-  
-      res.status(200).json({ message: 'Investment submitted successfully.', investment: newInvestment });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error.' });
+
+router.post('/invest', async (req, res) => {
+  try {
+    const userId = req.headers['user-id'] || req.body.userId;
+    const { selectedPackage, paymentMethod, amount } = req.body;
+
+    // Validate inputs
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
     }
-  });
+    if (!selectedPackage || !paymentMethod || !amount) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Create a new investment
+    const newInvestment = {
+      selectedPackage,
+      paymentMethod,
+      amount,
+      status: 'pending',
+    };
+
+    // Add the investment to the user's record
+    user.investments.push(newInvestment);
+    await user.save();
+
+    // Respond to the client
+    res.status(200).json({ message: 'Investment submitted successfully.', investment: newInvestment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+
   
   
   // Get user's pending withdrawals
@@ -648,55 +663,44 @@ router.post('/referral-link', async (req, res) => {
     }
   });
   
-  // Endpoint to retrieve user activity
-router.get('/profile/activity', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.id; // Assuming the `authenticateUser` middleware adds the user's ID to `req.user`
-
-    // Fetch user details
-    const user = await User.findById(userId).select(
-      'username email bitcoinAvailable ethereumAvailable usdtAvailable referrals totalWithdrawals totalEarnings investments lastSeen isOnline location'
-    );
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found.' });
+  router.get('/profile/activity', authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+  
+      const user = await User.findById(userId).select(
+        'username email bitcoinAvailable ethereumAvailable usdtAvailable referrals totalWithdrawals totalEarnings investments lastSeen isOnline location'
+      );
+  
+      if (!user) {
+        return res.status(404).json({ message: 'User not found.' });
+      }
+  
+      const activityData = {
+        username: user.username,
+        email: user.email,
+        walletBalances: {
+          bitcoin: { available: user.bitcoinAvailable },
+          ethereum: { available: user.ethereumAvailable },
+          usdt: { available: user.usdtAvailable },
+        },
+        referrals: user.referrals,
+        totalWithdrawals: user.totalWithdrawals,
+        totalEarnings: user.totalEarnings,
+        investments: user.investments,
+        lastSeen: user.lastSeen,
+        isOnline: user.isOnline,
+        location: user.location,
+      };
+  
+      res.status(200).json({
+        message: 'User activity retrieved successfully.',
+        activity: activityData,
+      });
+    } catch (error) {
+      console.error('Error fetching user activity:', error);
+      res.status(500).json({ message: 'Server error. Please try again later.' });
     }
-
-    // Structure the activity data
-    const activityData = {
-      username: user.username,
-      email: user.email,
-      walletBalances: {
-        bitcoin: {
-          available: user.bitcoinAvailable,
-        },
-        ethereum: {
-          available: user.ethereumAvailable,
-        },
-        usdt: {
-          available: user.usdtAvailable,
-        },
-      },
-      referrals: user.referrals,
-      totalWithdrawals: user.totalWithdrawals,
-      totalEarnings: user.totalEarnings,
-      investments: user.investments,
-      lastSeen: user.lastSeen,
-      isOnline: user.isOnline,
-      location: user.location,
-    };
-
-    // Return the structured activity data
-    res.status(200).json({
-      message: 'User activity retrieved successfully.',
-      activity: activityData,
-    });
-  } catch (error) {
-    console.error('Error fetching user activity:', error);
-    res.status(500).json({ message: 'Server error. Please try again later.' });
-  }
-});
-
+  }); 
 
 const authenticateAdmin = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -761,55 +765,4 @@ router.post('/admin/manage-user', authenticateAdmin, async (req, res) => {
   }
 });
 
-router.put('/user/profile', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.id; // Assume `authenticateUser` adds `user` to `req`
-    const {
-      fullName,
-      username,
-      email,
-      recoveryQuestion,
-      recoveryAnswer,
-      bitcoinWallet,
-      ethereumWallet,
-      usdtWallet,
-      location,
-    } = req.body;
-
-    // Validate fields (you can use a validation library like Joi for more complex validation)
-    if (!fullName || !username || !email) {
-      return res.status(400).json({ message: 'Full name, username, and email are required.' });
-    }
-
-    // Find and update the user
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          fullName,
-          username,
-          email,
-          recoveryQuestion,
-          recoveryAnswer,
-          bitcoinWallet,
-          ethereumWallet,
-          usdtWallet,
-          'location.ip': location?.ip,
-          'location.country': location?.country,
-          'location.city': location?.city,
-        },
-      },
-      { new: true } // Return the updated document
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-
-    res.status(200).json({ message: 'Profile updated successfully.', user: updatedUser });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'An error occurred while updating the profile.', error });
-  }
-});
 module.exports = router;
