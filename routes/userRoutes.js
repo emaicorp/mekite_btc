@@ -191,14 +191,32 @@ router.post('/login', async (req, res) => {
       res.status(200).json({
         message: 'Login successful.',
         userDetails: {
-          id: user._id,
-          fullName: user.fullName,
-          username: user.username,
-          email: user.email,
-          location: user.location, // Include location data
+            id: user._id,
+            fullName: user.fullName,
+            username: user.username,
+            email: user.email,
+            recoveryQuestion: user.recoveryQuestion,
+            recoveryAnswer: user.recoveryAnswer,
+            bitcoinWallet: user.bitcoinWallet,
+            ethereumWallet: user.ethereumWallet,
+            usdtWallet: user.usdtWallet,
+            referralLink: user.referralLink,
+            walletAddress: user.walletAddress,
+            totalWithdrawals: user.totalWithdrawals,
+            availableBalance: user.availableBalance,
+            totalEarnings: user.totalEarnings,
+            lastSeen: user.lastSeen,
+            isOnline: user.isOnline,
+            location: user.location,
+            referrals: user.referrals,
+            investments: user.investments,
+            emailVerified: user.emailVerified,
+            isDisabled: user.isDisabled,
+            isSuspended: user.isSuspended,
+            role: user.role,
         },
         token, // Return token
-      });
+    });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error. Please try again later.' });
