@@ -120,7 +120,9 @@ router.post('/register', async (req, res) => {
       await transporter.sendMail(mailOptions);
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
-      return res.status(500).json({ message: 'User registered but email sending failed.' });
+      return res.status(500).json({ message: 'User registered but email sending failed.',
+        details: emailError.message 
+       });
     }
 
     res.status(201).json({
