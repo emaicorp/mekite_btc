@@ -731,29 +731,7 @@ router.post('/invest', async (req, res) => {
     }
   }); 
 
-const authenticateAdmin = async (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({ message: 'Authentication required.' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied.' });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: 'Invalid token.' });
-  }
-};
-
-// Admin endpoint to manage user accounts
-router.post('/admin/manage-user', authenticateAdmin, async (req, res) => {
+router.post('/admin/manage-user', async (req, res) => {
   const { action, userId } = req.body;
 
   try {
@@ -793,5 +771,28 @@ router.post('/admin/manage-user', authenticateAdmin, async (req, res) => {
     return res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
+
+
+router.delete('/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Find the user by ID
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Delete the user
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 
 module.exports = router;
