@@ -132,7 +132,7 @@ function generateResetToken() {
   });  
 
 
-router.post('/login', async (req, res) => {
+  router.post('/login', async (req, res) => {
     try {
       const { username, password } = req.body;
   
@@ -151,6 +151,15 @@ router.post('/login', async (req, res) => {
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
         return res.status(401).json({ message: 'Invalid credentials.' });
+      }
+  
+      // Check if the user is disabled or suspended
+      if (user.isDisabled) {
+        return res.status(403).json({ message: 'Your account is disabled. Please contact support.' });
+      }
+  
+      if (user.isSuspended) {
+        return res.status(403).json({ message: 'Your account is suspended. Please contact support.' });
       }
   
       // Generate JWT token
@@ -175,8 +184,6 @@ router.post('/login', async (req, res) => {
             city: locationData.city,
             country: locationData.country,
           };
-        } else {
-          console.log('Location data is missing city or country', locationData);
         }
       } catch (error) {
         console.error('Error fetching location from ipinfo.io:', error);
@@ -186,6 +193,19 @@ router.post('/login', async (req, res) => {
       user.lastSeen = Date.now();
       user.isOnline = true;
       await user.save();
+  
+      // Prepare a response specific to role
+      let additionalDetails = {};
+      if (user.role === 'admin') {
+        // Admin-specific response (e.g., extra permissions, admin stats)
+        additionalDetails = {
+          adminPanelAccess: true,
+          adminStats: {
+            totalUsers: await User.countDocuments(),
+            activeUsers: await User.countDocuments({ isOnline: true }),
+          },
+        };
+      }
   
       // Return the response
       res.status(200).json({
@@ -216,12 +236,15 @@ router.post('/login', async (req, res) => {
             role: user.role,
         },
         token, // Return token
+        additionalDetails, // Include additional details for admin
+
     });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error. Please try again later.' });
     }
   });
+  
 
   // Forgotten Password Endpoint
 router.post('/forgot-password', async (req, res) => {
@@ -505,9 +528,6 @@ router.post('/invest', async (req, res) => {
     res.status(500).json({ message: 'Server error.' });
   }
 });
-
-
-  
   
   // Get user's pending withdrawals
   router.get('/withdrawals/pending', authenticateUser, async (req, res) => {
