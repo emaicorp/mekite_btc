@@ -24,6 +24,15 @@ const generateReferralLink = (username) => {
 function generateResetToken() {
     return crypto.randomBytes(32).toString('hex');
   }
+
+  // Configure the transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // or any other email service you're using
+  auth: {
+    user: process.env.EMAIL_USER, // Your email address
+    pass: process.env.EMAIL_PASS, // Your email password or app-specific password
+  },
+});
   
   router.post('/register', async (req, res) => {
     try {
