@@ -256,83 +256,60 @@ const transporter = nodemailer.createTransport({
   
 
   // Forgotten Password Endpoint
+// Forgotten Password Endpoint
 router.post('/forgot-password', async (req, res) => {
-    try {
-      const { email } = req.body;
-  
-      // Validate email
-      if (!email) {
-        return res.status(400).json({ message: 'Email is required.' });
-      }
-  
-      // Check if user exists
-      const user = await User.findOne({ email });
-      if (!user) {
-        return res.status(404).json({ message: 'User with this email does not exist.' });
-      }
-  
-      // Generate a reset token
-      const resetToken = generateResetToken();
-      const resetTokenExpiry = Date.now() + 3600000; // Token valid for 1 hour
-  
-      // Update user with reset token
-      user.resetToken = resetToken;
-      user.resetTokenExpiry = resetTokenExpiry;
-      await user.save();
-  
-      // Send reset email
-      const resetUrl = `http://yourfrontendurl.com/reset-password?token=${resetToken}`;
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: 'Password Reset Request',
-        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`,
-      };
-  
-      await transporter.sendMail(mailOptions);
-  
-      res.status(200).json({ message: 'Password reset email sent.' });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error. Please try again later.' });
+  try {
+    const { email } = req.body;
+
+    // Validate email
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
     }
-  });
+
+    // Check if the email exists in the database
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User with this email does not exist.' });
+    }
+
+    // If the email exists, allow navigation to reset password step
+    res.status(200).json({ message: 'Email verified. Proceed to reset password.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
   
   // Reset Password Endpoint
-  router.post('/reset-password', async (req, res) => {
-    try {
-      const { token, newPassword } = req.body;
-  
-      // Validate input
-      if (!token || !newPassword) {
-        return res.status(400).json({ message: 'Token and new password are required.' });
-      }
-  
-      // Find user by token and check expiry
-      const user = await User.findOne({
-        resetToken: token,
-        resetTokenExpiry: { $gt: Date.now() }, // Ensure token is not expired
-      });
-  
-      if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired token.' });
-      }
-  
-      // Hash the new password
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-  
-      // Update user password and clear reset token
-      user.password = hashedPassword;
-      user.resetToken = undefined;
-      user.resetTokenExpiry = undefined;
-      await user.save();
-  
-      res.status(200).json({ message: 'Password has been reset successfully.' });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error. Please try again later.' });
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    // Validate inputs
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: 'Email and new password are required.' });
     }
-  });
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User with this email does not exist.' });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update the user's password
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({ message: 'Password has been reset successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
+
   
  // Endpoint to update the balance for Bitcoin, Ethereum, or USDT
 router.put('/update-balance', async (req, res) => {
