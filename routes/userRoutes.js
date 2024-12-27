@@ -777,5 +777,136 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+// Endpoint to make a withdrawal
+router.post('/withdraw', async (req, res) => {
+  try {
+    const { userId, currency, amount } = req.body;
+
+    // Validate inputs
+    if (!userId || !currency || !amount) {
+      return res.status(400).json({ message: 'User ID, currency, and amount are required.' });
+    }
+
+    if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
+      return res.status(400).json({ message: 'Invalid currency type.' });
+    }
+
+    // Find the user by ID
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const availableField = `${currency}Available`;
+    const pendingField = `${currency}Pending`;
+
+    // Check if the user has enough balance
+    if (user[availableField] < amount) {
+      return res.status(400).json({ message: `Insufficient ${currency} balance.` });
+    }
+
+    // Deduct the amount from available balance and add to pending
+    user[availableField] -= amount;
+    user[pendingField] += amount;
+
+    // Save the updated user
+    await user.save();
+
+    res.status(200).json({ message: 'Withdrawal request submitted successfully.', pendingBalance: user[pendingField] });
+  } catch (error) {
+    res.status(500).json({ message: 'An error occurred.', error: error.message });
+  }
+});
+
+// Endpoint for admin to get all pending withdrawals
+router.get('/admin/pending-withdrawals', async (req, res) => {
+  try {
+    // Fetch all users with pending withdrawals
+    const users = await User.find({
+      $or: [
+        { bitcoinPending: { $gt: 0 } },
+        { ethereumPending: { $gt: 0 } },
+        { usdtPending: { $gt: 0 } }
+      ]
+    });
+
+    if (!users.length) {
+      return res.status(404).json({ message: 'No pending withdrawals found.' });
+    }
+
+    // Create a response with user information and pending withdrawals
+    const pendingWithdrawals = users.map(user => ({
+      userId: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      bitcoinPending: user.bitcoinPending,
+      ethereumPending: user.ethereumPending,
+      usdtPending: user.usdtPending,
+      lastSeen: user.lastSeen,
+    }));
+
+    res.status(200).json({ message: 'Pending withdrawals retrieved successfully.', pendingWithdrawals });
+  } catch (error) {
+    res.status(500).json({ message: 'An error occurred.', error: error.message });
+  }
+});
+
+// Approve or Reject Pending Withdrawal
+router.patch('/admin/withdrawals/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { currency, action } = req.body;
+
+  // Validate the request body
+  if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
+    return res.status(400).json({ message: 'Invalid currency type.' });
+  }
+
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject".' });
+  }
+
+  try {
+    // Find the user by userId
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Determine the pending field based on the currency
+    const pendingField = `${currency}Pending`;
+    const availableField = `${currency}Available`;
+
+    // Handle actions
+    if (action === 'approve') {
+      if (user[pendingField] === 0) {
+        return res.status(400).json({ message: 'No pending withdrawal for this currency.' });
+      }
+
+      // Move the pending amount to total withdrawals and clear the pending field
+      user.totalWithdrawals += user[pendingField];
+      user[pendingField] = 0;
+    } else if (action === 'reject') {
+      if (user[pendingField] === 0) {
+        return res.status(400).json({ message: 'No pending withdrawal for this currency.' });
+      }
+
+      // Return the pending amount back to the available balance
+      user[availableField] += user[pendingField];
+      user[pendingField] = 0;
+    }
+
+    // Save the updated user
+    await user.save();
+
+    res.status(200).json({
+      message: `Withdrawal ${action}ed successfully.`,
+      userId: user._id,
+      currency,
+      action
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'An error occurred.', error: error.message });
+  }
+});
 
 module.exports = router;
