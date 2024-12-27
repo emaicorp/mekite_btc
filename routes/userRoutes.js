@@ -780,11 +780,15 @@ router.delete('/users/:id', async (req, res) => {
 // Endpoint to make a withdrawal
 router.post('/withdraw', async (req, res) => {
   try {
-    const { userId, currency, amount } = req.body;
+    const userId = req.headers['user-id'] || req.body.userId;  // Get user ID from headers or request body
+    const { currency, amount } = req.body;  // Extract currency and amount from the request body
 
     // Validate inputs
-    if (!userId || !currency || !amount) {
-      return res.status(400).json({ message: 'User ID, currency, and amount are required.' });
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+    if (!currency || !amount) {
+      return res.status(400).json({ message: 'Currency and amount are required.' });
     }
 
     if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
@@ -797,23 +801,25 @@ router.post('/withdraw', async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    const availableField = `${currency}Available`;
-    const pendingField = `${currency}Pending`;
+    const availableField = `${currency}Available`;  // Dynamically create the field name for available balance
+    const pendingField = `${currency}Pending`;  // Dynamically create the field name for pending balance
 
     // Check if the user has enough balance
     if (user[availableField] < amount) {
       return res.status(400).json({ message: `Insufficient ${currency} balance.` });
     }
 
-    // Deduct the amount from available balance and add to pending
+    // Deduct the amount from available balance and add to pending balance
     user[availableField] -= amount;
     user[pendingField] += amount;
 
-    // Save the updated user
+    // Save the updated user record
     await user.save();
 
+    // Respond to the client
     res.status(200).json({ message: 'Withdrawal request submitted successfully.', pendingBalance: user[pendingField] });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'An error occurred.', error: error.message });
   }
 });
