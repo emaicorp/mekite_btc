@@ -551,42 +551,25 @@ router.post('/invest', async (req, res) => {
     }
   });  
   
-  router.patch('/admin/withdrawals/:id/approve', async (req, res) => {
-    const { id } = req.params; // Investment ID to approve
+  router.patch('/admin/withdrawals/:id', async (req, res) => {
+    const { id } = req.params; // Investment ID
+    const { action } = req.body; // 'approve' or 'reject'
   
-    try {
-      // Find the investment by its ID and update the status to 'approved'
-      const updatedInvestment = await User.updateOne(
-        { 'investments._id': id, 'investments.status': 'pending' },
-        { $set: { 'investments.$.status': 'approved' } }
-      );
-  
-      if (updatedInvestment.modifiedCount === 0) {
-        return res.status(404).json({ message: 'Investment not found or already approved' });
-      }
-  
-      res.status(200).json({ message: 'Withdrawal approved successfully' });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error' });
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'Invalid action' });
     }
-  });
-  
-  router.patch('/admin/withdrawals/:id/reject', async (req, res) => {
-    const { id } = req.params; // Investment ID to reject
   
     try {
-      // Find the investment by its ID and update the status to 'rejected'
       const updatedInvestment = await User.updateOne(
         { 'investments._id': id, 'investments.status': 'pending' },
-        { $set: { 'investments.$.status': 'rejected' } }
+        { $set: { 'investments.$.status': action === 'approve' ? 'approved' : 'rejected' } }
       );
   
       if (updatedInvestment.modifiedCount === 0) {
         return res.status(404).json({ message: 'Investment not found or already processed' });
       }
   
-      res.status(200).json({ message: 'Withdrawal rejected successfully' });
+      res.status(200).json({ message: `Withdrawal ${action}ed successfully` });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error' });
