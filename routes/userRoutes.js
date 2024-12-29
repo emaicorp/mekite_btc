@@ -534,65 +534,67 @@ router.post('/invest', async (req, res) => {
   
   // Admin gets all pending withdrawals
   router.get('/admin/withdrawals/pending', async (req, res) => {
-    try {
-      const users = await User.find({ 'investments.status': 'pending' });
-      const pendingWithdrawals = users.map(user => ({
-        userId: user._id,
-        username: user.username,
-        investments: user.investments.filter(inv => inv.status === 'pending'),
-      }));
+  try {
+    const users = await User.find({ 'investments.status': 'pending' });
+    const pendingWithdrawals = users.map(user => ({
+      userId: user._id,
+      username: user.username,
+      investments: user.investments.filter(inv => inv.status === 'pending'), // Only return pending investments
+    }));
+
+    res.status(200).json({ pendingWithdrawals });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
   
-      res.status(200).json({ pendingWithdrawals });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error.' });
+router.post('/admin/withdrawals/:action', async (req, res) => {
+  try {
+    const { action } = req.params; // "approve" or "reject"
+    const { investmentId } = req.body; // Send the investmentId instead of index
+
+    if (!investmentId) {
+      return res.status(400).json({ message: 'Investment ID is required.' });
     }
-  });
-  
-  // Admin approves or rejects a withdrawal
-  router.post('/admin/withdrawals/:action', async (req, res) => {
-    try {
-      const { action } = req.params; // "approve" or "reject"
-      const { userId, investmentIndex } = req.body;
-  
-      if (!userId || investmentIndex === undefined) {
-        return res.status(400).json({ message: 'User ID and investment index are required.' });
-      }
-  
-      const user = await User.findById(userId);
-      if (!user) return res.status(404).json({ message: 'User not found.' });
-  
-      const investment = user.investments[investmentIndex];
-      if (!investment || investment.status !== 'pending') {
-        return res.status(400).json({ message: 'Invalid or already processed investment.' });
-      }
-  
-      if (action === 'approve') {
-        investment.status = 'approved';
-  
-        // Update user's available balance based on payment method
-        if (investment.paymentMethod === 'bitcoin') {
-          user.bitcoinAvailable += investment.amount;
-        } else if (investment.paymentMethod === 'usdt') {
-          user.usdtAvailable += investment.amount;
-        } else if (investment.paymentMethod === 'ethereum') {
-          user.ethereumAvailable += investment.amount;
-        }
-  
-      } else if (action === 'reject') {
-        investment.status = 'rejected';
-      } else {
-        return res.status(400).json({ message: 'Invalid action.' });
-      }
-  
-      await user.save();
-  
-      res.status(200).json({ message: `Investment ${action}d successfully.`, user });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error.' });
+
+    const user = await User.findOne({ 'investments._id': investmentId });
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const investment = user.investments.id(investmentId); // Get the specific investment by ID
+    if (!investment || investment.status !== 'pending') {
+      return res.status(400).json({ message: 'Invalid or already processed investment.' });
     }
-  });
+
+    // Process the investment based on the action
+    if (action === 'approve') {
+      investment.status = 'approved';
+
+      // Update user's available balance based on the payment method
+      if (investment.paymentMethod === 'bitcoin') {
+        user.bitcoinAvailable += investment.amount;
+      } else if (investment.paymentMethod === 'usdt') {
+        user.usdtAvailable += investment.amount;
+      } else if (investment.paymentMethod === 'ethereum') {
+        user.ethereumAvailable += investment.amount;
+      }
+    } else if (action === 'reject') {
+      investment.status = 'rejected';
+    } else {
+      return res.status(400).json({ message: 'Invalid action.' });
+    }
+
+    // Save the updated user document
+    await user.save();
+
+    // Return a success message
+    res.status(200).json({ message: `Investment ${action}d successfully.`, user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
   
   router.post('/referrals/commission', async (req, res) => {
     try {
