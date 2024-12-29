@@ -817,104 +817,81 @@ router.post('/withdraw', async (req, res) => {
 });
 
 
-// Endpoint for admin to get all pending withdrawals
-router.get('/admin/pending-withdrawals', async (req, res) => {
+// Fetch All Users' Currency Pendings
+router.get('/admin/currency-pendings', async (req, res) => {
   try {
-    // Fetch all users with pending withdrawals
-    const users = await User.find({
-      $or: [
-        { bitcoinPending: { $gt: 0 } },
-        { ethereumPending: { $gt: 0 } },
-        { usdtPending: { $gt: 0 } }
-      ]
+    // Query to fetch all users' pending balances
+    const users = await User.find({}, {
+      fullName: 1, // Include the user's name for reference
+      bitcoinPending: 1,
+      ethereumPending: 1,
+      usdtPending: 1,
+      _id: 1 // Include the `_id` to identify users
     });
 
     if (!users.length) {
-      return res.status(404).json({ message: 'No pending withdrawals found.' });
+      return res.status(404).json({ message: 'No users found.' });
     }
 
-    // Create a response with user information and pending withdrawals
-    const pendingWithdrawals = users.map(user => ({
-      userId: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      bitcoinPending: user.bitcoinPending,
-      ethereumPending: user.ethereumPending,
-      usdtPending: user.usdtPending,
-      lastSeen: user.lastSeen,
-    }));
-
-    res.status(200).json({ message: 'Pending withdrawals retrieved successfully.', pendingWithdrawals });
+    // Respond with the list of users and their pending balances
+    res.status(200).json({
+      message: 'All users currency pendings fetched successfully.',
+      users: users.map(user => ({
+        userId: user._id,
+        fullName: user.fullName,
+        bitcoinPending: user.bitcoinPending,
+        ethereumPending: user.ethereumPending,
+        usdtPending: user.usdtPending
+      }))
+    });
   } catch (error) {
-    res.status(500).json({ message: 'An error occurred.', error: error.message });
+    console.error('Error fetching all currency pendings:', error);
+    res.status(500).json({ message: 'Server error.', error: error.message });
   }
 });
 
 
-router.patch('/admin/withdrawals/:userId', async (req, res) => {
+// Approve Pending Currencies
+router.post('/admin/approve-currency/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { currency, action, investmentId } = req.body;
-
-  // Validate the request body
-  if (!investmentId) {
-    return res.status(400).json({ message: 'Investment ID is required.' });
-  }
-
-  if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
-    return res.status(400).json({ message: 'Invalid currency type.' });
-  }
-
-  if (!['approve', 'reject'].includes(action)) {
-    return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject".' });
-  }
 
   try {
-    // Find the user by userId
+    // Find the user by their ID
     const user = await User.findById(userId);
+
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    // Validate investmentId against the user's investments (example logic)
-    const investment = user.investments?.find(inv => inv.id === investmentId);
-    if (!investment) {
-      return res.status(404).json({ message: 'Investment not found.' });
-    }
+    // Approve the pending balances
+    user.bitcoinAvailable += user.bitcoinPending;
+    user.ethereumAvailable += user.ethereumPending;
+    user.usdtAvailable += user.usdtPending;
 
-    // Determine the pending field based on the currency
-    const pendingField = `${currency}Pending`;
-    const availableField = `${currency}Available`;
+    // Reset pending balances
+    user.bitcoinPending = 0;
+    user.ethereumPending = 0;
+    user.usdtPending = 0;
 
-    // Handle actions
-    if (action === 'approve') {
-      if (user[pendingField] === 0) {
-        return res.status(400).json({ message: 'No pending withdrawal for this currency.' });
-      }
-
-      // Move the pending amount to total withdrawals and clear the pending field
-      user.totalWithdrawals += user[pendingField];
-      user[pendingField] = 0;
-    } else if (action === 'reject') {
-      if (user[pendingField] === 0) {
-        return res.status(400).json({ message: 'No pending withdrawal for this currency.' });
-      }
-
-      // Return the pending amount back to the available balance
-      user[availableField] += user[pendingField];
-      user[pendingField] = 0;
-    }
-
-    // Save the updated user
+    // Save the updated user document
     await user.save();
 
     res.status(200).json({
-      message: `Withdrawal ${action}ed successfully.`,
-      userId: user._id,
-      currency,
-      action
+      message: 'Pending currencies approved successfully.',
+      user: {
+        userId: user._id,
+        fullName: user.fullName,
+        bitcoinAvailable: user.bitcoinAvailable,
+        ethereumAvailable: user.ethereumAvailable,
+        usdtAvailable: user.usdtAvailable,
+        bitcoinPending: user.bitcoinPending,
+        ethereumPending: user.ethereumPending,
+        usdtPending: user.usdtPending
+      }
     });
   } catch (error) {
-    res.status(500).json({ message: 'An error occurred.', error: error.message });
+    console.error('Error approving pending currencies:', error);
+    res.status(500).json({ message: 'Server error.', error: error.message });
   }
 });
 
