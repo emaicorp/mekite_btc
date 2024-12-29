@@ -850,12 +850,16 @@ router.get('/admin/pending-withdrawals', async (req, res) => {
   }
 });
 
-// Approve or Reject Pending Withdrawal
+
 router.patch('/admin/withdrawals/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { currency, action } = req.body;
+  const { currency, action, investmentId } = req.body;
 
   // Validate the request body
+  if (!investmentId) {
+    return res.status(400).json({ message: 'Investment ID is required.' });
+  }
+
   if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
     return res.status(400).json({ message: 'Invalid currency type.' });
   }
@@ -869,6 +873,12 @@ router.patch('/admin/withdrawals/:userId', async (req, res) => {
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Validate investmentId against the user's investments (example logic)
+    const investment = user.investments?.find(inv => inv.id === investmentId);
+    if (!investment) {
+      return res.status(404).json({ message: 'Investment not found.' });
     }
 
     // Determine the pending field based on the currency
