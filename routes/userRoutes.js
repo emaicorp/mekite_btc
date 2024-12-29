@@ -550,10 +550,10 @@ router.post('/invest', async (req, res) => {
 });
 
   
-router.post('/admin/withdrawals/:action', async (req, res) => {
+router.patch('/admin/withdrawals/:action', async (req, res) => {
   try {
     const { action } = req.params; // "approve" or "reject"
-    const { investmentId } = req.body; // Send the investmentId instead of index
+    const { investmentId } = req.body;
 
     if (!investmentId) {
       return res.status(400).json({ message: 'Investment ID is required.' });
@@ -567,34 +567,24 @@ router.post('/admin/withdrawals/:action', async (req, res) => {
       return res.status(400).json({ message: 'Invalid or already processed investment.' });
     }
 
-    // Process the investment based on the action
     if (action === 'approve') {
       investment.status = 'approved';
-
-      // Update user's available balance based on the payment method
-      if (investment.paymentMethod === 'bitcoin') {
-        user.bitcoinAvailable += investment.amount;
-      } else if (investment.paymentMethod === 'usdt') {
-        user.usdtAvailable += investment.amount;
-      } else if (investment.paymentMethod === 'ethereum') {
-        user.ethereumAvailable += investment.amount;
-      }
+      // Handle payment method logic (e.g., bitcoin, usdt, ethereum)
+      // Update balances, etc.
     } else if (action === 'reject') {
       investment.status = 'rejected';
     } else {
       return res.status(400).json({ message: 'Invalid action.' });
     }
 
-    // Save the updated user document
     await user.save();
-
-    // Return a success message
     res.status(200).json({ message: `Investment ${action}d successfully.`, user });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error.' });
   }
 });
+
   
   router.post('/referrals/commission', async (req, res) => {
     try {
