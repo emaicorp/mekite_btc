@@ -501,7 +501,7 @@ router.post('/referral-link', async (req, res) => {
         return res.status(404).json({ message: 'User not found.' });
       }
   
-      // Define available packages with corresponding rates and durations
+      // Define available plans with corresponding rates and durations
       const plans = {
         'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
         'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
@@ -533,10 +533,11 @@ router.post('/referral-link', async (req, res) => {
       // Add the investment to the user's investments array
       user.investments.push(newInvestment);
   
-      // Update pendingDeposit, profileRate, and activeDeposit
-      user.pendingDeposit += amount;  // Add the current investment amount to pendingDeposit
+      // Update the user's balances
+      user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount;  // Add the current investment amount to pendingDeposit
       user.profileRate = plan.rate * 100 + '% Daily';  // Update profileRate (rate in percentage)
-      user.activeDeposit += amount;  // Add the amount to the active deposit
+      user.activeDeposit += amount;  // Add the amount to active deposit
+      user.totalEarnings += profit;  // Add the profit to totalEarnings
   
       // Save the updated user record
       await user.save();
@@ -548,12 +549,13 @@ router.post('/referral-link', async (req, res) => {
         pendingDeposit: user.pendingDeposit,
         activeDeposit: user.activeDeposit,
         profileRate: user.profileRate,
+        totalEarnings: user.totalEarnings,  // Include the updated totalEarnings in the response
       });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error.' });
     }
-  });  
+  });       
   
   // Get user's pending withdrawals
   router.get('/withdrawals/pending', authenticateUser, async (req, res) => {
@@ -601,18 +603,61 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
       return res.status(400).json({ message: 'Invalid or already processed investment.' });
     }
 
+    // Handle action
     if (action === 'approve') {
+      // Check if the investment has reached the expiration date
+      if (investment.expiresAt > new Date()) {
+        return res.status(400).json({ message: 'Investment is not yet due for approval.' });
+      }
+
       investment.status = 'approved';
-      // Handle payment method logic (e.g., bitcoin, usdt, ethereum)
-      // Update balances, etc.
+      
+      // Define available plans
+      const plans = {
+        'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
+        'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+        'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+      };
+
+      const selectedPackage = investment.selectedPackage;
+      const plan = plans[selectedPackage];
+      const profit = investment.amount * plan.rate * plan.duration;
+
+      // Update the user's balances
+      user.totalEarnings += profit;
+      user.activeDeposit += investment.amount; // Deduct the amount from activeDeposit as the investment is now approved
+      user.pendingDeposit += investment.amount; // Deduct the amount from pendingDeposit
+      user.availableBalance += calculateEarnings(investment.amount); // Assuming you calculate earnings for the user
+
+      // Update the user's profile rate based on the selected plan
+      user.profileRate = plan.rate * 100 + '% Daily';  // Update the rate to reflect the selected plan
+
+      // Save the updated user record
+      await user.save();
+
+      res.status(200).json({
+        message: 'Investment approved successfully.',
+        user,
+        investment,
+        totalEarnings: user.totalEarnings,
+        activeDeposit: user.activeDeposit,
+        pendingDeposit: user.pendingDeposit,
+        availableBalance: user.availableBalance,
+        profileRate: user.profileRate,
+      });
     } else if (action === 'reject') {
       investment.status = 'rejected';
+
+      // Save the updated user record
+      await user.save();
+
+      res.status(200).json({
+        message: 'Investment rejected successfully.',
+        user,
+      });
     } else {
       return res.status(400).json({ message: 'Invalid action.' });
     }
-
-    await user.save();
-    res.status(200).json({ message: `Investment ${action}d successfully.`, user });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error.' });
