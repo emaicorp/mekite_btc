@@ -17,7 +17,7 @@ const generateWalletAddress = () => {
 
 // Generate referral link
 const generateReferralLink = (username) => {
-  return `https://yourapp.com/register?ref=${username}`;
+  return `https://bitfluxcapital.netlify.app/register?ref=${username}`;
 };
 
 // Generate Reset Token
@@ -113,8 +113,8 @@ const transporter = nodemailer.createTransport({
       try {
         await sendEmail(
           email,
-          'Welcome to Your App',
-          `Hello ${fullName},\n\nThank you for registering. Here are your details:\n\nWallet Address: ${walletAddress}\nReferral Link: ${referralLink}\n\nBest regards,\nYour App Team`
+          'Welcome to Your App!',
+          `Hello ${fullName},\n\nWelcome to Your App! We're excited to have you onboard.\n\nHere are your account details:\n\n- **Wallet Address**: ${walletAddress}\n- **Referral Link**: ${referralLink}\n\nWe appreciate you joining us and look forward to helping you with all your needs. If you have any questions or need assistance, feel free to reach out to our support team. We're here to help!\n\nEnjoy your experience with us!\n\nBest regards,\nThe Your App Team\n\nP.S. Be sure to check out our latest features and updates in your dashboard.`
         );
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
@@ -482,44 +482,78 @@ router.post('/referral-link', async (req, res) => {
     }
   };
 
-router.post('/invest', async (req, res) => {
-  try {
-    const userId = req.headers['user-id'] || req.body.userId;
-    const { selectedPackage, paymentMethod, amount } = req.body;
-
-    // Validate inputs
-    if (!userId) {
-      return res.status(400).json({ message: 'User ID is required.' });
+  router.post('/invest', async (req, res) => {
+    try {
+      const userId = req.headers['user-id'] || req.body.userId;
+      const { selectedPackage, paymentMethod, amount } = req.body;
+  
+      // Validate inputs
+      if (!userId) {
+        return res.status(400).json({ message: 'User ID is required.' });
+      }
+      if (!selectedPackage || !paymentMethod || !amount) {
+        return res.status(400).json({ message: 'All fields are required.' });
+      }
+  
+      // Find the user
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found.' });
+      }
+  
+      // Define available packages with corresponding rates and durations
+      const plans = {
+        'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
+        'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+        'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+      };
+  
+      // Check if the selected package is valid
+      if (!plans[selectedPackage]) {
+        return res.status(400).json({ message: 'Invalid package selected.' });
+      }
+  
+      // Calculate the expiration date based on the selected plan
+      const plan = plans[selectedPackage];
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + plan.duration);
+  
+      // Calculate the profit for the investment
+      const profit = amount * plan.rate * plan.duration;
+  
+      // Create a new investment object
+      const newInvestment = {
+        selectedPackage,
+        paymentMethod,
+        amount,
+        status: 'pending',
+        expiresAt: expiryDate,
+      };
+  
+      // Add the investment to the user's investments array
+      user.investments.push(newInvestment);
+  
+      // Update pendingDeposit, profileRate, and activeDeposit
+      user.pendingDeposit += amount;  // Add the current investment amount to pendingDeposit
+      user.profileRate = plan.rate * 100 + '% Daily';  // Update profileRate (rate in percentage)
+      user.activeDeposit += amount;  // Add the amount to the active deposit
+  
+      // Save the updated user record
+      await user.save();
+  
+      // Respond with the new investment details and success message
+      res.status(200).json({
+        message: 'Investment submitted successfully.',
+        investment: newInvestment,
+        pendingDeposit: user.pendingDeposit,
+        activeDeposit: user.activeDeposit,
+        profileRate: user.profileRate,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
     }
-    if (!selectedPackage || !paymentMethod || !amount) {
-      return res.status(400).json({ message: 'All fields are required.' });
-    }
-
-    // Find the user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-
-    // Create a new investment
-    const newInvestment = {
-      selectedPackage,
-      paymentMethod,
-      amount,
-      status: 'pending',
-    };
-
-    // Add the investment to the user's record
-    user.investments.push(newInvestment);
-    await user.save();
-
-    // Respond to the client
-    res.status(200).json({ message: 'Investment submitted successfully.', investment: newInvestment });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error.' });
-  }
-});
+  });  
   
   // Get user's pending withdrawals
   router.get('/withdrawals/pending', authenticateUser, async (req, res) => {

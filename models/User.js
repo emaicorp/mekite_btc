@@ -43,6 +43,7 @@ resetTokenExpiry: { type: Date },
 
    totalEarnings: { type: Number, default: 0 },  // Total earnings (type: Number)
 
+
     // Fields for tracking user's last seen and online status
   lastSeen: { type: Date, default: Date.now }, // Timestamp for the last time the user was online
   isOnline: { type: Boolean, default: false },  // Boolean to indicate if the user is currently online
@@ -54,16 +55,17 @@ resetTokenExpiry: { type: Date },
     city: { type: String },
   },
 
-  // New field for tracking investments
-  investments: [
-    {
-      selectedPackage: { type: String, required: true }, // Package selected by the user
-      paymentMethod: { type: String, enum: ['bitcoin', 'usdt', 'ethereum'], required: true },
-      amount: { type: Number, required: true },
-      status: { type: String, enum: ['pending', 'approved'], default: 'pending' },
-      dateInvested: { type: Date, default: Date.now }
-    }
-  ],
+  investments: [{
+    selectedPackage: String,
+    paymentMethod: String,
+    amount: Number,
+    status: { type: String, enum: ['pending', 'approved', 'completed'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: Date, // To store the expiry date of the plan
+  }],
+  pendingDeposit: { type: Number, default: 0 },
+  profileRate: { type: String, default: '' }, // This will store the current profile rate
+  activeDeposit: { type: Number, default: 0 }, // Total active deposits
 
   emailVerified: { type: Boolean, default: false },
 isDisabled: { type: Boolean, default: false },
