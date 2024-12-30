@@ -568,7 +568,6 @@ router.post('/referral-link', async (req, res) => {
     }
   });
   
-  // Admin gets all pending withdrawals
   router.get('/admin/withdrawals/pending', async (req, res) => {
     try {
       // Find users with investments that are pending
@@ -578,17 +577,33 @@ router.post('/referral-link', async (req, res) => {
       const pendingWithdrawals = users.map(user => ({
         userId: user._id,
         username: user.username,
-        investments: user.investments.filter(inv => inv.status === 'pending'), // Return all investments, but filter for pending ones
+        investments: user.investments
+          .filter(inv => inv.status === 'pending') // Return all investments, but filter for pending ones
+          .map(investment => ({
+            _id: investment._id,
+            selectedPackage: investment.selectedPackage,
+            paymentMethod: investment.paymentMethod,
+            amount: investment.amount,
+            status: investment.status,
+            expiresAt: investment.expiresAt,
+            createdAt: investment.createdAt,
+          })), // Extract the necessary details including the package
       }));
   
-      // Return the pending withdrawals with full investment details
+      // Return the pending withdrawals with full investment details including the selected package
       res.status(200).json({ pendingWithdrawals });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error.' });
     }
   });
-  
+
+  // Assuming calculateEarnings is based on the investment amount and some fixed rate
+const calculateEarnings = (amount) => {
+  // Example: For simplicity, let's assume a fixed 10% earnings rate
+  const earningsRate = 0.10; // 10% earnings
+  return amount * earningsRate;
+};
 
   
 router.patch('/admin/withdrawals/:action', async (req, res) => {
@@ -610,50 +625,36 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
 
     // Handle action
     if (action === 'approve') {
-      // Check if the investment has reached the expiration date
-      if (investment.expiresAt > new Date()) {
-        return res.status(400).json({ message: 'Investment is not yet due for approval.' });
-      }
-
       investment.status = 'approved';
-      
+
       // Define available plans
       const plans = {
-        'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
-        'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
-        'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+        'Starter Plan': { rate: 0.06, duration: 3 },
+        'Premium Plan': { rate: 0.10, duration: 5 },
+        'Professional Plan': { rate: 0.15, duration: 5 },
       };
 
       const selectedPackage = investment.selectedPackage;
       const plan = plans[selectedPackage];
       const profit = investment.amount * plan.rate * plan.duration;
 
-      // Update the user's balances
+      // Update user balances
       user.totalEarnings += profit;
-      user.activeDeposit += investment.amount; // Deduct the amount from activeDeposit as the investment is now approved
-      user.pendingDeposit += investment.amount; // Deduct the amount from pendingDeposit
-      user.availableBalance += calculateEarnings(investment.amount); // Assuming you calculate earnings for the user
+      user.activeDeposit += investment.amount; 
+      user.pendingDeposit -= investment.amount;
+      user.availableBalance += calculateEarnings(investment.amount); 
+      user.profileRate = `${plan.rate * 100}% Daily`;
 
-      // Update the user's profile rate based on the selected plan
-      user.profileRate = plan.rate * 100 + '% Daily';  // Update the rate to reflect the selected plan
-
-      // Save the updated user record
       await user.save();
 
       res.status(200).json({
         message: 'Investment approved successfully.',
         user,
         investment,
-        totalEarnings: user.totalEarnings,
-        activeDeposit: user.activeDeposit,
-        pendingDeposit: user.pendingDeposit,
-        availableBalance: user.availableBalance,
-        profileRate: user.profileRate,
       });
     } else if (action === 'reject') {
       investment.status = 'rejected';
 
-      // Save the updated user record
       await user.save();
 
       res.status(200).json({
@@ -668,7 +669,6 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
     res.status(500).json({ message: 'Server error.' });
   }
 });
-
   
   router.post('/referrals/commission', async (req, res) => {
     try {
