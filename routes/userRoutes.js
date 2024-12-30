@@ -570,20 +570,25 @@ router.post('/referral-link', async (req, res) => {
   
   // Admin gets all pending withdrawals
   router.get('/admin/withdrawals/pending', async (req, res) => {
-  try {
-    const users = await User.find({ 'investments.status': 'pending' });
-    const pendingWithdrawals = users.map(user => ({
-      userId: user._id,
-      username: user.username,
-      investments: user.investments.filter(inv => inv.status === 'pending'), // Only return pending investments
-    }));
-
-    res.status(200).json({ pendingWithdrawals });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error.' });
-  }
-});
+    try {
+      // Find users with investments that are pending
+      const users = await User.find({ 'investments.status': 'pending' });
+  
+      // Map over the users to extract the full investment details
+      const pendingWithdrawals = users.map(user => ({
+        userId: user._id,
+        username: user.username,
+        investments: user.investments.filter(inv => inv.status === 'pending'), // Return all investments, but filter for pending ones
+      }));
+  
+      // Return the pending withdrawals with full investment details
+      res.status(200).json({ pendingWithdrawals });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error.' });
+    }
+  });
+  
 
   
 router.patch('/admin/withdrawals/:action', async (req, res) => {
