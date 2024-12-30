@@ -240,6 +240,7 @@ const transporter = nodemailer.createTransport({
             totalWithdrawals: user.totalWithdrawals,
             availableBalance: user.availableBalance,
             totalEarnings: user.totalEarnings,
+            activeDeposit:user.activeDeposit,
             lastSeen: user.lastSeen,
             isOnline: user.isOnline,
             location: user.location,
