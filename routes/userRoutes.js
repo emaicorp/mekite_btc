@@ -619,46 +619,71 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
     const user = await User.findOne({ 'investments._id': investmentId });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const investment = user.investments.id(investmentId); // Get the specific investment by ID
+    const investment = user.investments.id(investmentId);
     if (!investment || investment.status !== 'pending') {
       return res.status(400).json({ message: 'Invalid or already processed investment.' });
     }
 
-    // Handle action
-    if (action === 'approve') {
-      investment.status = 'approved';
+    // Define available plans
+    const plans = {
+      'Starter Plan': { dailyProfit: 6, duration: 3 }, // $6 daily for 3 days
+      'Premium Plan': { dailyProfit: 12, duration: 5 }, // $12 daily for 5 days
+      'Professional Plan': { dailyProfit: 15, duration: 6 }, // $15 daily for 6 days
+    };
 
-      // Define available plans
-      const plans = {
-        'Starter Plan': { rate: 0.06, duration: 3 },
-        'Premium Plan': { rate: 0.10, duration: 5 },
-        'Professional Plan': { rate: 0.15, duration: 5 },
+    const selectedPackage = investment.selectedPackage;
+    const plan = plans[selectedPackage];
+
+    if (action === 'approve') {
+      const now = new Date();
+      investment.status = 'approved';
+      investment.expiresAt = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
+
+      // Transfer investment amount from pendingDeposit to activeDeposit
+      if (user.pendingDeposit >= investment.amount) {
+        user.pendingDeposit -= investment.amount;
+        user.activeDeposit += investment.amount;
+      } else {
+        return res.status(400).json({
+          message: 'Insufficient pending deposit for this investment.',
+        });
+      }
+
+      const totalEarningsForInvestment = plan.dailyProfit * plan.duration;
+
+      // Add daily profit
+      const addDailyProfit = async (remainingDays) => {
+        if (remainingDays > 0) {
+          setTimeout(async () => {
+            user.availableBalance += plan.dailyProfit; // Add daily profit to availableBalance
+
+            // On the last day, handle investment expiry
+            if (remainingDays === 1) {
+              user.activeDeposit -= investment.amount; // Deduct investment amount
+              user.availableBalance += investment.amount; // Add investment amount to availableBalance
+              user.totalEarnings += totalEarningsForInvestment; // Add total earnings
+            }
+
+            await user.save(); // Save after every day's update
+            addDailyProfit(remainingDays - 1);
+          }, 24 * 60 * 60 * 1000); // Daily interval
+        }
       };
 
-      const selectedPackage = investment.selectedPackage;
-      const plan = plans[selectedPackage];
-      const profit = investment.amount * plan.rate * plan.duration;
-
-      // Update user balances
-      user.totalEarnings += profit;
-      user.activeDeposit += investment.amount; 
-      user.pendingDeposit -= investment.amount;
-      user.availableBalance += calculateEarnings(investment.amount); 
-      user.profileRate = `${plan.rate * 100}% Daily`;
+      // Start daily profit calculation
+      addDailyProfit(plan.duration);
 
       await user.save();
 
-      res.status(200).json({
+      return res.status(200).json({
         message: 'Investment approved successfully.',
         user,
         investment,
       });
     } else if (action === 'reject') {
       investment.status = 'rejected';
-
       await user.save();
-
-      res.status(200).json({
+      return res.status(200).json({
         message: 'Investment rejected successfully.',
         user,
       });
