@@ -237,6 +237,7 @@ const transporter = nodemailer.createTransport({
             ethereumPending: user.ethereumPending,
             usdtAvailable: user.usdtAvailable,
             usdtPending: user.usdtPending,
+            pendingBalance:user.pendingBalance,
             totalWithdrawals: user.totalWithdrawals,
             availableBalance: user.availableBalance,
             totalEarnings: user.totalEarnings,
@@ -627,7 +628,7 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
     // Define available plans
     const plans = {
       'Starter Plan': { dailyProfit: 6, duration: 3 }, // $6 daily for 3 days
-      'Premium Plan': { dailyProfit: 12, duration: 5 }, // $12 daily for 5 days
+      'Premium Plan': { dailyProfit: 10, duration: 5 }, // $12 daily for 5 days
       'Professional Plan': { dailyProfit: 15, duration: 6 }, // $15 daily for 6 days
     };
 
@@ -638,7 +639,7 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
       const now = new Date();
       investment.status = 'approved';
       investment.expiresAt = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
-
+    
       // Transfer investment amount from pendingDeposit to activeDeposit
       if (user.pendingDeposit >= investment.amount) {
         user.pendingDeposit -= investment.amount;
@@ -648,39 +649,41 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
           message: 'Insufficient pending deposit for this investment.',
         });
       }
-
+    
+      // Apply first day's profit immediately
+      user.availableBalance += plan.dailyProfit;
       const totalEarningsForInvestment = plan.dailyProfit * plan.duration;
-
-      // Add daily profit
-      const addDailyProfit = async (remainingDays) => {
+    
+      // Handle daily profit for the remaining duration
+      const handleDailyProfit = async (remainingDays) => {
         if (remainingDays > 0) {
           setTimeout(async () => {
             user.availableBalance += plan.dailyProfit; // Add daily profit to availableBalance
-
-            // On the last day, handle investment expiry
+    
             if (remainingDays === 1) {
+              // On the last day, handle investment expiry
               user.activeDeposit -= investment.amount; // Deduct investment amount
               user.availableBalance += investment.amount; // Add investment amount to availableBalance
               user.totalEarnings += totalEarningsForInvestment; // Add total earnings
             }
-
+    
             await user.save(); // Save after every day's update
-            addDailyProfit(remainingDays - 1);
+            handleDailyProfit(remainingDays - 1);
           }, 24 * 60 * 60 * 1000); // Daily interval
         }
       };
-
-      // Start daily profit calculation
-      addDailyProfit(plan.duration);
-
+    
+      // Start daily profit calculation (for remaining days minus the first day)
+      handleDailyProfit(plan.duration - 1);
+    
       await user.save();
-
+    
       return res.status(200).json({
         message: 'Investment approved successfully.',
         user,
         investment,
       });
-    } else if (action === 'reject') {
+    }  else if (action === 'reject') {
       investment.status = 'rejected';
       await user.save();
       return res.status(200).json({
@@ -882,8 +885,8 @@ router.delete('/users/:id', async (req, res) => {
 // Endpoint to make a withdrawal
 router.post('/withdraw', async (req, res) => {
   try {
-    const userId = req.headers['user-id'] || req.body.userId;  // Get user ID from headers or request body
-    const { currency, amount } = req.body;  // Extract currency and amount from the request body
+    const userId = req.headers['user-id'] || req.body.userId; // Get user ID from headers or request body
+    const { currency, amount } = req.body; // Extract currency and amount from the request body
 
     // Validate inputs
     if (!userId) {
@@ -892,7 +895,6 @@ router.post('/withdraw', async (req, res) => {
     if (!currency || !amount) {
       return res.status(400).json({ message: 'Currency and amount are required.' });
     }
-
     if (!['bitcoin', 'ethereum', 'usdt'].includes(currency)) {
       return res.status(400).json({ message: 'Invalid currency type.' });
     }
@@ -903,8 +905,8 @@ router.post('/withdraw', async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    const availableField = `${currency}Available`;  // Dynamically create the field name for available balance
-    const pendingField = `${currency}Pending`;  // Dynamically create the field name for pending balance
+    const availableField = `${currency}Available`; // Dynamically create the field name for available balance
+    const pendingField = `${currency}Pending`; // Dynamically create the field name for pending balance
 
     // Check if the user has enough balance
     if (user[availableField] < amount) {
@@ -915,17 +917,28 @@ router.post('/withdraw', async (req, res) => {
     user[availableField] -= amount;
     user[pendingField] += amount;
 
+    // Recalculate total available balance
+    user.availableBalance =
+      user.bitcoinAvailable + user.ethereumAvailable + user.usdtAvailable;
+
+    // Calculate total pending balance across all currencies
+    const totalPendingBalance =
+      user.bitcoinPending + user.ethereumPending + user.usdtPending;
+
     // Save the updated user record
     await user.save();
 
     // Respond to the client
-    res.status(200).json({ message: 'Withdrawal request submitted successfully.', pendingBalance: user[pendingField] });
+    res.status(200).json({
+      message: 'Withdrawal request submitted successfully.',
+      pendingBalance: totalPendingBalance,
+      availableBalance: user.availableBalance,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'An error occurred.', error: error.message });
   }
 });
-
 
 // Fetch All Users' Currency Pendings
 router.get('/admin/currency-pendings', async (req, res) => {

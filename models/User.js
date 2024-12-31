@@ -19,6 +19,8 @@ resetTokenExpiry: { type: Date },
   agreedToTerms: { type: Boolean, required: true },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
 
+  pendingBalance:{type:Number, default:0},
+
    // Fields for tracking balances for each currency
    bitcoinAvailable: { type: Number, default: 0 },
    bitcoinPending: { type: Number, default: 0 },
@@ -71,6 +73,13 @@ resetTokenExpiry: { type: Date },
 isDisabled: { type: Boolean, default: false },
 isSuspended: { type: Boolean, default: false },
 
+});
+
+// Middleware to recalculate pendingBalance
+UserSchema.pre('save', function (next) {
+  this.pendingBalance =
+    this.bitcoinPending + this.ethereumPending + this.usdtPending;
+  next();
 });
 
 module.exports = mongoose.model('User', UserSchema);
