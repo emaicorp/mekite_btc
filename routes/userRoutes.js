@@ -538,7 +538,12 @@ router.post('/referral-link', async (req, res) => {
       // Update the user's balances
       user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount;  // Add the current investment amount to pendingDeposit
       user.profileRate = plan.rate * 100 + '% Daily';  // Update profileRate (rate in percentage)
-      user.activeDeposit += amount;  // Add the amount to active deposit
+  
+      // Only add the new investment amount to activeDeposit after approval
+      if (user.activeDeposit === 0) {
+        user.activeDeposit = amount;  // Set activeDeposit to amount if it's the first investment
+      }
+  
       user.totalEarnings += profit;  // Add the profit to totalEarnings
   
       // Save the updated user record
@@ -557,7 +562,7 @@ router.post('/referral-link', async (req, res) => {
       console.error(error);
       res.status(500).json({ message: 'Server error.' });
     }
-  });       
+  });         
   
   // Get user's pending withdrawals
   router.get('/withdrawals/pending', authenticateUser, async (req, res) => {
@@ -643,7 +648,7 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
       // Transfer investment amount from pendingDeposit to activeDeposit
       if (user.pendingDeposit >= investment.amount) {
         user.pendingDeposit -= investment.amount;
-        user.activeDeposit += investment.amount;
+        user.activeDeposit += investment.amount;  // Update activeDeposit with the investment amount
       } else {
         return res.status(400).json({
           message: 'Insufficient pending deposit for this investment.',
