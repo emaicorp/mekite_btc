@@ -6,6 +6,7 @@ const axios = require('axios');  // To fetch location data using IP
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Adjust the path if needed
 const sendEmail = require('../emailUtils'); // Import the sendEmail function
+const { sendReferralMessage } = require('../notification'); // Import the notification logic
 require('dotenv').config();
 
 const router = express.Router();
@@ -429,41 +430,59 @@ router.get('/all-users', async (req, res) => {
     }
   });
 
-  // Endpoint to handle referral link click
-router.post('/referral-link', async (req, res) => {
-    try {
-      const { referralLink } = req.body; // Referral link that was clicked
-  
-      // Validate that the referral link is provided
-      if (!referralLink) {
-        return res.status(400).json({ message: 'Referral link is required.' });
-      }
-  
-      // Find the user who owns the referral link
-      const referredUser = await User.findOne({ referralLink });
-  
-      if (!referredUser) {
-        return res.status(404).json({ message: 'Referral link is invalid.' });
-      }
-  
-      // Assuming a fixed amount of earnings for each referral click (can be dynamic)
-      const referralEarnings = 10; // For example, $10 per referral click
-  
-      // Update the total earnings of the user who owns the referral link
-      referredUser.totalEarnings += referralEarnings;
-      await referredUser.save(); // Save the updated user
-  
-      // Respond with the updated earnings
-      res.status(200).json({
-        message: 'Referral link clicked successfully.',
-        totalEarnings: referredUser.totalEarnings,
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error. Please try again later.' });
-    }
-  });
+  // Endpoint to handle referral link clicks
+router.post('/referral', async (req, res) => {
+  const { referralLink, referredUsername } = req.body;
 
+  try {
+    // Find the user who owns the referral link
+    const referrer = await User.findOne({ referralLink });
+
+    if (!referrer) {
+      return res.status(400).json({ message: 'Invalid referral link' });
+    }
+
+    // Check if the referred user already exists
+    const referredUser = await User.findOne({ username: referredUsername });
+
+    if (referredUser) {
+      return res.status(400).json({ message: 'User has already been referred' });
+    }
+
+    // Update the referred user's information with referral details
+    await User.updateOne(
+      { username: referredUsername },
+      {
+        $set: {
+          referralLink,
+          upline: referrer.username,
+        },
+      }
+    );
+
+    // Add the referral commission to the referrer's balance
+    const commission = 10; // You can set a dynamic commission value or logic
+    referrer.referrals.push({
+      referredBy: referredUsername,
+      status: 'active',
+      commission,
+    });
+
+    // Update the referrer balance or earnings
+    referrer.totalEarnings += commission;
+    await referrer.save();
+
+    // Send a message to the referrer about the referral
+    const message = `Hello ${referrer.username}, your referral link has been clicked by ${referredUsername}. You have earned a commission of $${commission}.`;
+    sendReferralMessage(referrer, message);
+
+    // Respond with success message
+    res.status(200).json({ message: 'Referral link clicked successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'An error occurred' });
+  }
+});
   const authenticateUser = async (req, res, next) => {
     try {
       const userId = req.headers['user-id'] || req.body.userId;
@@ -612,7 +631,6 @@ const calculateEarnings = (amount) => {
   return amount * earningsRate;
 };
 
-  
 router.patch('/admin/withdrawals/:action', async (req, res) => {
   try {
     const { action } = req.params; // "approve" or "reject"
@@ -632,9 +650,9 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
 
     // Define available plans
     const plans = {
-      'Starter Plan': { dailyProfit: 6, duration: 3 }, // $6 daily for 3 days
-      'Premium Plan': { dailyProfit: 10, duration: 5 }, // $12 daily for 5 days
-      'Professional Plan': { dailyProfit: 15, duration: 6 }, // $15 daily for 6 days
+      'Starter Plan': { dailyProfitRate: 0.06, duration: 3 }, // 6% daily for 3 days
+      'Premium Plan': { dailyProfitRate: 0.10, duration: 5 }, // 10% daily for 5 days
+      'Professional Plan': { dailyProfitRate: 0.15, duration: 6 }, // 15% daily for 6 days
     };
 
     const selectedPackage = investment.selectedPackage;
@@ -644,51 +662,51 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
       const now = new Date();
       investment.status = 'approved';
       investment.expiresAt = new Date(now.getTime() + plan.duration * 24 * 60 * 60 * 1000);
-    
+
       // Transfer investment amount from pendingDeposit to activeDeposit
       if (user.pendingDeposit >= investment.amount) {
         user.pendingDeposit -= investment.amount;
-        user.activeDeposit += investment.amount;  // Update activeDeposit with the investment amount
+        user.activeDeposit += investment.amount;
       } else {
         return res.status(400).json({
           message: 'Insufficient pending deposit for this investment.',
         });
       }
-    
-      // Apply first day's profit immediately
-      user.availableBalance += plan.dailyProfit;
-      const totalEarningsForInvestment = plan.dailyProfit * plan.duration;
-    
-      // Handle daily profit for the remaining duration
+
+      // Daily profit logic
+      const dailyProfit = investment.amount * plan.dailyProfitRate;
+      const totalProfit = dailyProfit * plan.duration;
+
       const handleDailyProfit = async (remainingDays) => {
         if (remainingDays > 0) {
           setTimeout(async () => {
-            user.availableBalance += plan.dailyProfit; // Add daily profit to availableBalance
-    
+            user.availableBalance += dailyProfit; // Add daily profit to available balance
+
             if (remainingDays === 1) {
-              // On the last day, handle investment expiry
-              user.activeDeposit -= investment.amount; // Deduct investment amount
-              user.availableBalance += investment.amount; // Add investment amount to availableBalance
-              user.totalEarnings += totalEarningsForInvestment; // Add total earnings
+              // On the last day, handle investment completion
+              user.activeDeposit -= investment.amount; // Deduct from active deposit
+              user.availableBalance += investment.amount; // Add investment amount to available balance
+              user.totalEarnings += totalProfit; // Update total earnings
+              investment.status = 'completed'; // Mark investment as completed
             }
-    
-            await user.save(); // Save after every day's update
+
+            await user.save();
             handleDailyProfit(remainingDays - 1);
           }, 24 * 60 * 60 * 1000); // Daily interval
         }
       };
-    
-      // Start daily profit calculation (for remaining days minus the first day)
-      handleDailyProfit(plan.duration - 1);
-    
+
+      // Start the daily profit updates
+      handleDailyProfit(plan.duration);
+
       await user.save();
-    
+
       return res.status(200).json({
         message: 'Investment approved successfully.',
         user,
         investment,
       });
-    }  else if (action === 'reject') {
+    } else if (action === 'reject') {
       investment.status = 'rejected';
       await user.save();
       return res.status(200).json({
@@ -700,7 +718,7 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error.' });
+    res.status(500).json({ message: 'Server error.', error: error.message });
   }
 });
   
@@ -985,7 +1003,6 @@ router.get('/admin/currency-pendings', async (req, res) => {
 });
 
 
-// Approve Pending Currencies
 router.post('/admin/approve-currency/:userId', async (req, res) => {
   const { userId } = req.params;
 
@@ -997,10 +1014,14 @@ router.post('/admin/approve-currency/:userId', async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    // Approve the pending balances
-    user.bitcoinAvailable += user.bitcoinPending;
-    user.ethereumAvailable += user.ethereumPending;
-    user.usdtAvailable += user.usdtPending;
+    // Calculate the total pending amount
+    const totalPending = user.bitcoinPending + user.ethereumPending + user.usdtPending;
+
+    // Deduct the total pending amount from the available balances
+    user.availableBalance -= totalPending;
+
+    // Update totalWithdrawals
+    user.totalWithdrawals += totalPending;
 
     // Reset pending balances
     user.bitcoinPending = 0;
@@ -1020,7 +1041,9 @@ router.post('/admin/approve-currency/:userId', async (req, res) => {
         usdtAvailable: user.usdtAvailable,
         bitcoinPending: user.bitcoinPending,
         ethereumPending: user.ethereumPending,
-        usdtPending: user.usdtPending
+        usdtPending: user.usdtPending,
+        totalWithdrawals: user.totalWithdrawals,
+        availableBalance: user.availableBalance, // Ensure this reflects the correct amount
       }
     });
   } catch (error) {

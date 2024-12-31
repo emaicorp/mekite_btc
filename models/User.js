@@ -45,7 +45,6 @@ resetTokenExpiry: { type: Date },
 
    totalEarnings: { type: Number, default: 0 },  // Total earnings (type: Number)
 
-
     // Fields for tracking user's last seen and online status
   lastSeen: { type: Date, default: Date.now }, // Timestamp for the last time the user was online
   isOnline: { type: Boolean, default: false },  // Boolean to indicate if the user is currently online
@@ -65,6 +64,8 @@ resetTokenExpiry: { type: Date },
     createdAt: { type: Date, default: Date.now },
     expiresAt: Date, // To store the expiry date of the plan
   }],
+  profileRate: { type: String, required: true },  // Store the profile rate as a string
+
   pendingDeposit: { type: Number, default: 0 },
   profileRate: { type: String, default: '' }, // This will store the current profile rate
   activeDeposit: { type: Number, default: 0 }, // Total active deposits
