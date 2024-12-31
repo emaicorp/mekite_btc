@@ -899,6 +899,12 @@ router.post('/withdraw', async (req, res) => {
       return res.status(400).json({ message: 'Invalid currency type.' });
     }
 
+    // Ensure amount is a number
+    const numericAmount = Number(amount);
+    if (isNaN(numericAmount)) {
+      return res.status(400).json({ message: 'Invalid amount. It must be a number.' });
+    }
+
     // Find the user by ID
     const user = await User.findById(userId);
     if (!user) {
@@ -909,13 +915,13 @@ router.post('/withdraw', async (req, res) => {
     const pendingField = `${currency}Pending`; // Dynamically create the field name for pending balance
 
     // Check if the user has enough balance
-    if (user[availableField] < amount) {
+    if (user[availableField] < numericAmount) {
       return res.status(400).json({ message: `Insufficient ${currency} balance.` });
     }
 
     // Deduct the amount from available balance and add to pending balance
-    user[availableField] -= amount;
-    user[pendingField] += amount;
+    user[availableField] -= numericAmount;
+    user[pendingField] += numericAmount;
 
     // Recalculate total available balance
     user.availableBalance =
