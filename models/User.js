@@ -63,6 +63,7 @@ resetTokenExpiry: { type: Date },
     status: { type: String, enum: ['pending', 'approved', 'completed'], default: 'pending' },
     createdAt: { type: Date, default: Date.now },
     expiresAt: Date, // To store the expiry date of the plan
+    isProfitAdded: { type: Boolean, default: false },  // New field to track profit addition
   }],
   profileRate: { type: String, required: true },  // Store the profile rate as a string
 
