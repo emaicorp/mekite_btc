@@ -243,15 +243,20 @@ const transporter = nodemailer.createTransport({
             availableBalance: user.availableBalance,
             totalEarnings: user.totalEarnings,
             activeDeposit:user.activeDeposit,
+            pendingDeposit: user.pendingDeposit, // New field
+            profileRate: user.profileRate, // New field
             lastSeen: user.lastSeen,
             isOnline: user.isOnline,
             location: user.location,
             referrals: user.referrals,
+            investments: user.investments, // New field
             investments: user.investments,
             emailVerified: user.emailVerified,
             isDisabled: user.isDisabled,
             isSuspended: user.isSuspended,
             role: user.role,
+            upline: user.upline, // New field
+            agreedToTerms: user.agreedToTerms, // New field
         },
         token, // Return token
         additionalDetails, // Include additional details for admin
@@ -263,8 +268,6 @@ const transporter = nodemailer.createTransport({
     }
   });
   
-
-  // Forgotten Password Endpoint
 // Forgotten Password Endpoint
 router.post('/forgot-password', async (req, res) => {
   try {
@@ -650,13 +653,15 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
 
     // Define available plans
     const plans = {
-      'Starter Plan': { dailyProfitRate: 0.06, duration: 3 }, // 6% daily for 3 days
-      'Premium Plan': { dailyProfitRate: 0.10, duration: 5 }, // 10% daily for 5 days
-      'Professional Plan': { dailyProfitRate: 0.15, duration: 6 }, // 15% daily for 6 days
+      'Starter Plan': { dailyProfitRate: 0.06, duration: 3 },
+      'Premium Plan': { dailyProfitRate: 0.10, duration: 5 },
+      'Professional Plan': { dailyProfitRate: 0.15, duration: 6 },
     };
 
-    const selectedPackage = investment.selectedPackage;
-    const plan = plans[selectedPackage];
+    const plan = plans[investment.selectedPackage];
+    if (!plan) {
+      return res.status(400).json({ message: 'Invalid plan selected.' });
+    }
 
     if (action === 'approve') {
       const now = new Date();
@@ -668,37 +673,34 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
         user.pendingDeposit -= investment.amount;
         user.activeDeposit += investment.amount;
       } else {
-        return res.status(400).json({
-          message: 'Insufficient pending deposit for this investment.',
-        });
+        return res.status(400).json({ message: 'Insufficient pending deposit.' });
       }
 
-      // Daily profit logic
+      // Calculate daily and total profit
       const dailyProfit = investment.amount * plan.dailyProfitRate;
       const totalProfit = dailyProfit * plan.duration;
 
+      // Add daily profit updates
       const handleDailyProfit = async (remainingDays) => {
         if (remainingDays > 0) {
           setTimeout(async () => {
             user.availableBalance += dailyProfit; // Add daily profit to available balance
 
             if (remainingDays === 1) {
-              // On the last day, handle investment completion
+              // Handle investment completion on the last day
               user.activeDeposit -= investment.amount; // Deduct from active deposit
-              user.availableBalance += investment.amount; // Add investment amount to available balance
-              user.totalEarnings += totalProfit; // Update total earnings
-              investment.status = 'completed'; // Mark investment as completed
+              user.availableBalance += investment.amount + totalProfit; // Add principal and profit to available balance
+              user.totalEarnings += totalProfit; // Update total earnings with calculated profit
+              investment.status = 'completed'; // Mark as completed
             }
 
             await user.save();
             handleDailyProfit(remainingDays - 1);
-          }, 24 * 60 * 60 * 1000); // Daily interval
+          }, 24 * 60 * 60 * 1000); // 1-day interval
         }
       };
 
-      // Start the daily profit updates
-      handleDailyProfit(plan.duration);
-
+      handleDailyProfit(plan.duration); // Start daily updates
       await user.save();
 
       return res.status(200).json({
@@ -709,10 +711,7 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
     } else if (action === 'reject') {
       investment.status = 'rejected';
       await user.save();
-      return res.status(200).json({
-        message: 'Investment rejected successfully.',
-        user,
-      });
+      return res.status(200).json({ message: 'Investment rejected successfully.', user });
     } else {
       return res.status(400).json({ message: 'Invalid action.' });
     }
