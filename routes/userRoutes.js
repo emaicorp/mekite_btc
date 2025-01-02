@@ -1099,15 +1099,17 @@ router.post('/admin/approve-currency/:userId', async (req, res) => {
   }
 });
 
-// POST route to fund the active deposit
 router.put('/fund-active-deposit', async (req, res) => {
   try {
-    const { walletAddress, amount } = req.body;  // amount to fund the active deposit
-    
+    const { walletAddress, amount } = req.body;
+
     // Validate the inputs
-    if (!walletAddress || !amount || amount <= 0) {
-      return res.status(400).json({ message: 'Valid wallet address and amount are required.' });
+    if (!walletAddress || !amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Valid wallet address and a positive numeric amount are required.' });
     }
+
+    // Convert amount to a number
+    const numericAmount = Number(amount);
 
     // Find the user by wallet address
     const user = await User.findOne({ walletAddress });
@@ -1115,8 +1117,8 @@ router.put('/fund-active-deposit', async (req, res) => {
       return res.status(404).json({ message: 'User not found with this wallet address.' });
     }
 
-    // Add the amount to the active deposit
-    user.activeDeposit += amount;
+    // Add the numeric amount to the active deposit
+    user.activeDeposit += numericAmount;
 
     // Save the updated user object
     await user.save();
@@ -1125,7 +1127,7 @@ router.put('/fund-active-deposit', async (req, res) => {
     res.status(200).json({
       message: 'Active deposit funded successfully.',
       activeDeposit: user.activeDeposit,
-      availableBalance: user.availableBalance,  // You may want to return the available balance as well
+      availableBalance: user.availableBalance,
     });
   } catch (error) {
     console.error(error);
