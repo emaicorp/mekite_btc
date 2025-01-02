@@ -114,9 +114,53 @@ const transporter = nodemailer.createTransport({
       try {
         await sendEmail(
           email,
-          'Welcome to Your App!',
-          `Hello ${fullName},\n\nWelcome to Your App! We're excited to have you onboard.\n\nHere are your account details:\n\n- **Wallet Address**: ${walletAddress}\n- **Referral Link**: ${referralLink}\n\nWe appreciate you joining us and look forward to helping you with all your needs. If you have any questions or need assistance, feel free to reach out to our support team. We're here to help!\n\nEnjoy your experience with us!\n\nBest regards,\nThe Your App Team\n\nP.S. Be sure to check out our latest features and updates in your dashboard.`
+          'Welcome to Your App - Your Account Details Inside!',
+          `Dear ${fullName},
+        
+        Welcome to **Your App**! We are thrilled to have you join our community.
+        
+        Your registration was successful, and we're here to ensure you have a seamless experience. Below are your account details and important information:
+        
+        ---
+        
+        **Account Details:**
+        - **Full Name:** ${fullName}
+        - **Username:** ${username}
+        - **Wallet Address:** ${walletAddress}
+        - **Referral Link:** ${referralLink}
+        
+        **How to Use Your Referral Link:**
+        Share your referral link with friends and earn rewards when they sign up and start using Your App. 
+        
+        **Your Wallet Details:**
+        If you added cryptocurrency wallets, they're securely linked to your account for seamless transactions.
+        
+        **Recovery Question and Answer:**
+        You selected a recovery question during registration. Remember your recovery answer, as it will be essential for account recovery in case you forget your password.
+        
+        ---
+        
+        **Next Steps:**
+        1. Log in to your account using your username and password at (https://bitfluxcapital.netlify.app//login).
+        2. Explore your personalized dashboard to start managing your activities.
+        3. Share your referral link to invite friends and grow your network.
+        
+        **Need Help?**
+        If you have any questions, encounter any issues, or need assistance, please don't hesitate to reach out to our support team at support@yourapp.com. We're here to help you every step of the way.
+        
+        ---
+        
+        **Thank You for Choosing Us!**
+        We are excited to be part of your journey and are committed to delivering the best experience possible. Stay tuned for updates, new features, and exciting opportunities.
+        
+        Warm regards,  
+        **The Your App Team**
+        
+        ---
+        
+        P.S. Keep this email for your records. For security purposes, never share your login credentials with anyone. Stay safe!`
         );
+        
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
         return res.status(500).json({
@@ -382,8 +426,23 @@ router.put('/update-balance', async (req, res) => {
           from: process.env.EMAIL_USER,  // Sender address
           to: user.email,  // Recipient address (user's email)
           subject: 'Deposit Successful',  // Email subject
-          text: `Dear ${user.fullName},\n\nYour deposit of ${balanceChange} ${currency} has been successfully credited to your account.\n\nYour new available balance is: ${user.availableBalance}.\n\nThank you for using our service!`,  // Email body
-        };
+          text: `
+            Hello ${user.fullName},
+        
+            We're excited to inform you that your deposit of ${balanceChange} ${currency} has been successfully credited to your account.
+        
+            Here are the details of your updated balances:
+            - ${currency} Available Balance: ${user[availableField]}
+            - Total Available Balance: ${user.availableBalance}
+        
+            Your transaction was successfully completed, and you can now enjoy using your balance in our services.
+        
+            Thank you for choosing us!
+        
+            Best regards,
+            The BIT FLUX CAPITAL Team
+          `,  // Email body
+        };        
   
         // Send email
         transporter.sendMail(mailOptions, (error, info) => {
@@ -411,27 +470,28 @@ router.put('/update-balance', async (req, res) => {
     }
   });    
   
-  // Endpoint to get all users
+  // Endpoint to get all users// Endpoint to get all users
 router.get('/all-users', async (req, res) => {
-    try {
-      // Fetch all users from the database
-      const users = await User.find();
-  
-      // If no users found
-      if (users.length === 0) {
-        return res.status(404).json({ message: 'No users found.' });
-      }
-  
-      // Return the list of users
-      res.status(200).json({
-        message: 'Users fetched successfully.',
-        users: users, // This will return an array of user objects
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error. Please try again later.' });
+  try {
+    // Fetch all users from the database, excluding the password field
+    const users = await User.find({}, { password: 0, __v: 0 });
+
+    // If no users found
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'No users found.' });
     }
-  });
+
+    // Return the list of users
+    res.status(200).json({
+      message: 'Users fetched successfully.',
+      users: users, // This will return an array of user objects without the password field
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
+
 
   // Endpoint to handle referral link clicks
 router.post('/referral', async (req, res) => {
@@ -1039,4 +1099,122 @@ router.post('/admin/approve-currency/:userId', async (req, res) => {
   }
 });
 
+// POST route to fund the active deposit
+router.put('/fund-active-deposit', async (req, res) => {
+  try {
+    const { walletAddress, amount } = req.body;  // amount to fund the active deposit
+    
+    // Validate the inputs
+    if (!walletAddress || !amount || amount <= 0) {
+      return res.status(400).json({ message: 'Valid wallet address and amount are required.' });
+    }
+
+    // Find the user by wallet address
+    const user = await User.findOne({ walletAddress });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found with this wallet address.' });
+    }
+
+    // Add the amount to the active deposit
+    user.activeDeposit += amount;
+
+    // Save the updated user object
+    await user.save();
+
+    // Send a confirmation response
+    res.status(200).json({
+      message: 'Active deposit funded successfully.',
+      activeDeposit: user.activeDeposit,
+      availableBalance: user.availableBalance,  // You may want to return the available balance as well
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
+
+// POST route to fund total earnings
+router.put('/fund-total-earnings', async (req, res) => {
+  try {
+    const { walletAddress, amount } = req.body;  // Amount to be added to totalEarnings
+    
+    // Validate the inputs
+    if (!walletAddress || !amount || amount <= 0) {
+      return res.status(400).json({ message: 'Valid wallet address and amount are required.' });
+    }
+
+    // Find the user by wallet address
+    const user = await User.findOne({ walletAddress });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found with this wallet address.' });
+    }
+
+    // Add the amount to the totalEarnings
+    user.totalEarnings += amount;
+
+    // Save the updated user object
+    await user.save();
+
+    // Send a confirmation response
+    res.status(200).json({
+      message: 'Total earnings funded successfully.',
+      totalEarnings: user.totalEarnings,
+      availableBalance: user.availableBalance,  // Optionally return available balance
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+});
+
+
+router.post('/deduct-deposit', async (req, res) => {
+  const { username, amount } = req.body;
+
+  // Validate request body
+  if (!username || !amount || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid input. Ensure username and a valid amount are provided.',
+    });
+  }
+
+  try {
+    // Find user by username
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    // Check if activeDeposit is sufficient for deduction
+    if (user.activeDeposit < amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient active deposit.',
+      });
+    }
+
+    // Deduct the amount from activeDeposit
+    user.activeDeposit -= amount;
+
+    // Save the updated user document
+    const updatedUser = await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Amount successfully deducted from active deposit.',
+      updatedUser,
+    });
+  } catch (error) {
+    console.error('Error deducting amount from active deposit:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred while processing your request.',
+    });
+  }
+});
 module.exports = router;

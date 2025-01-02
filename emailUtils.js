@@ -18,8 +18,8 @@ const sendEmail = (to, subject, text, html) => {
       from: `"BIT FLUX CAPITAL" <${process.env.EMAIL_USER}>`, // Correctly formatted 'from' field
       to,
       subject,
-      text,
-      html,
+      text: text ? text : "",  // Ensure text is a string
+      html: html ? html : "",  // Ensure html is a string
     };
 
     transporter.sendMail(mailOptions, (error, info) => {
