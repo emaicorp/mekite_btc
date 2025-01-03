@@ -492,60 +492,103 @@ router.get('/all-users', async (req, res) => {
   }
 });
 
-
   // Endpoint to handle referral link clicks
-router.post('/referral', async (req, res) => {
-  const { referralLink, referredUsername } = req.body;
+  router.post('/referral', async (req, res) => {
+    const { referralLink, referredUsername, email, fullName, password, recoveryQuestion, recoveryAnswer } = req.body;
 
-  try {
-    // Find the user who owns the referral link
-    const referrer = await User.findOne({ referralLink });
+    try {
+        // Find the user who owns the referral link
+        const referrer = await User.findOne({ referralLink });
 
-    if (!referrer) {
-      return res.status(400).json({ message: 'Invalid referral link' });
+        if (!referrer) {
+            return res.status(400).json({ message: 'Invalid referral link.' });
+        }
+
+        // Check if the referred user already exists
+        const existingUser = await User.findOne({ $or: [{ username: referredUsername }, { email }] });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Username or email already exists.' });
+        }
+
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Generate wallet address and referral link for the new user
+        const walletAddress = generateWalletAddress();
+        const newReferralLink = generateReferralLink(referredUsername);
+
+        // Create the new user
+        const newUser = new User({
+            username: referredUsername,
+            email,
+            referralLink: newReferralLink,
+            walletAddress,
+            upline: referrer.username,
+            agreedToTerms: true,
+            fullName,
+            password: hashedPassword,
+            recoveryQuestion,
+            recoveryAnswer,
+        });
+
+        await newUser.save();
+
+        // Notify the referrer about the new referral
+        const message = `Hello ${referrer.username}, your referral link has been used by ${referredUsername} (${email}).`;
+        await sendReferralMessage(referrer, message);
+
+        // Add the referral to the referrer's account
+        referrer.referrals.push({
+            referredBy: referredUsername,
+            status: 'active',
+            commission: 0,
+        });
+        await referrer.save();
+
+        // Send a welcome email to the new user
+        try {
+            await sendEmail(
+                email,
+                'Welcome to Your App - Account Details Inside!',
+                `Dear ${fullName},
+                
+Welcome to **Your App**! Your account has been created successfully.
+
+**Account Details:**
+- **Username:** ${referredUsername}
+- **Wallet Address:** ${walletAddress}
+- **Referral Link:** ${newReferralLink}
+
+Start sharing your referral link to earn rewards!
+
+Thank you for joining us,
+**The Your App Team**`
+            );
+        } catch (emailError) {
+            console.error('Email sending failed:', emailError);
+            return res.status(500).json({
+                message: 'User registered but email sending failed.',
+                details: emailError.message,
+            });
+        }
+
+        res.status(201).json({
+            message: 'Referred user registered successfully. Details sent to their email.',
+            userDetails: {
+                fullName,
+                username: referredUsername,
+                email,
+                walletAddress,
+                referralLink: newReferralLink,
+            },
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'An error occurred. Please try again.' });
     }
-
-    // Check if the referred user already exists
-    const referredUser = await User.findOne({ username: referredUsername });
-
-    if (referredUser) {
-      return res.status(400).json({ message: 'User has already been referred' });
-    }
-
-    // Update the referred user's information with referral details
-    await User.updateOne(
-      { username: referredUsername },
-      {
-        $set: {
-          referralLink,
-          upline: referrer.username,
-        },
-      }
-    );
-
-    // Add the referral commission to the referrer's balance
-    const commission = 10; // You can set a dynamic commission value or logic
-    referrer.referrals.push({
-      referredBy: referredUsername,
-      status: 'active',
-      commission,
-    });
-
-    // Update the referrer balance or earnings
-    referrer.totalEarnings += commission;
-    await referrer.save();
-
-    // Send a message to the referrer about the referral
-    const message = `Hello ${referrer.username}, your referral link has been clicked by ${referredUsername}. You have earned a commission of $${commission}.`;
-    sendReferralMessage(referrer, message);
-
-    // Respond with success message
-    res.status(200).json({ message: 'Referral link clicked successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'An error occurred' });
-  }
 });
+  
+
   const authenticateUser = async (req, res, next) => {
     try {
       const userId = req.headers['user-id'] || req.body.userId;
@@ -568,85 +611,112 @@ router.post('/referral', async (req, res) => {
 
   router.post('/invest', async (req, res) => {
     try {
-      const userId = req.headers['user-id'] || req.body.userId;
-      const { selectedPackage, paymentMethod, amount } = req.body;
-  
-      // Validate inputs
-      if (!userId) {
-        return res.status(400).json({ message: 'User ID is required.' });
-      }
-      if (!selectedPackage || !paymentMethod || !amount) {
-        return res.status(400).json({ message: 'All fields are required.' });
-      }
-  
-      // Find the user
-      const user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found.' });
-      }
-  
-      // Define available plans with corresponding rates and durations
-      const plans = {
-        'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
-        'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
-        'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+        const userId = req.headers['user-id'] || req.body.userId;
+        const { selectedPackage, paymentMethod, amount } = req.body;
+
+        // Validate inputs
+        if (!userId) {
+            return res.status(400).json({ message: 'User ID is required.' });
+        }
+        if (!selectedPackage || !paymentMethod || !amount) {
+            return res.status(400).json({ message: 'All fields are required.' });
+        }
+
+        // Find the user
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Define available plans with corresponding rates and durations
+        // const plans = {
+        //     'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
+        //     'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+        //     'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+        // };
+
+        const plans = {
+          'Starter Plan': { rate: 0.0333, duration: 3 }, // 3.33% daily for 3 days (adjusted)
+          'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+          'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
       };
-  
-      // Check if the selected package is valid
-      if (!plans[selectedPackage]) {
-        return res.status(400).json({ message: 'Invalid package selected.' });
-      }
-  
-      // Calculate the expiration date based on the selected plan
-      const plan = plans[selectedPackage];
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + plan.duration);
-  
-      // Calculate the profit for the investment
-      const profit = amount * plan.rate * plan.duration;
-  
-      // Create a new investment object
-      const newInvestment = {
-        selectedPackage,
-        paymentMethod,
-        amount,
-        status: 'pending',
-        expiresAt: expiryDate,
-      };
-  
-      // Add the investment to the user's investments array
-      user.investments.push(newInvestment);
-  
-      // Update the user's balances
-      user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount; // Add the current investment amount to pendingDeposit
-  
-      // Update the profileRate to reflect the selected plan's rate
-      user.profileRate = `${plan.rate * 100}% Daily`; // Simply convert the rate to a percentage string
-  
-      // Only add the new investment amount to activeDeposit after approval
-      if (user.activeDeposit === 0) {
-        user.activeDeposit = amount; // Set activeDeposit to amount if it's the first investment
-      }
-  
-      user.totalEarnings += profit; // Add the profit to totalEarnings
-  
-      // Save the updated user record
-      await user.save();
-  
-      // Respond with the new investment details and success message
-      res.status(200).json({
-        message: 'Investment submitted successfully.',
-        investment: newInvestment,
-        pendingDeposit: user.pendingDeposit,
-        activeDeposit: user.activeDeposit,
-        profileRate: user.profileRate,
-        totalEarnings: user.totalEarnings, // Include the updated totalEarnings in the response
-      });
+      
+
+        // Check if the selected package is valid
+        if (!plans[selectedPackage]) {
+            return res.status(400).json({ message: 'Invalid package selected.' });
+        }
+
+        // Calculate the expiration date based on the selected plan
+        const plan = plans[selectedPackage];
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + plan.duration);
+
+        // Calculate the profit for the investment
+        const profit = amount * plan.rate * plan.duration;
+
+        // Create a new investment object
+        const newInvestment = {
+            selectedPackage,
+            paymentMethod,
+            amount,
+            status: 'pending',
+            expiresAt: expiryDate,
+        };
+
+        // Add the investment to the user's investments array
+        user.investments.push(newInvestment);
+
+        // Update the user's balances
+        user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount;
+        user.profileRate = `${plan.rate * 100}% Daily`;
+
+        // If it's the user's first active deposit, update activeDeposit
+        if (user.activeDeposit === 0) {
+            user.activeDeposit = amount;
+        }
+
+        user.totalEarnings += profit;
+
+        // Check if the user was referred
+        if (user.upline && user.upline !== 'N/A') {
+            const referrer = await User.findOne({ username: user.upline });
+            if (referrer) {
+              const commission = 10; // Fixed commission of 10 for the referrer
+                referrer.referrals.push({
+                    referredBy: user.username,
+                    status: 'active',
+                    commission,
+                });
+                referrer.totalEarnings += commission;
+
+                // Send an email to the referrer about the commission
+                const message = `Hello ${referrer.username}, ${user.username} has invested $${amount} using your referral link. You have earned a commission of $${commission}.`;
+                await sendReferralMessage(referrer, message);
+
+                // Save referrer details
+                await referrer.save();
+            }
+        }
+
+        // Save the updated user record
+        await user.save();
+
+        // Respond with the new investment details and success message
+        res.status(200).json({
+            message: 'Investment submitted successfully.',
+            investment: newInvestment,
+            pendingDeposit: user.pendingDeposit,
+            activeDeposit: user.activeDeposit,
+            profileRate: user.profileRate,
+            totalEarnings: user.totalEarnings,
+        });
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error.', error: error.message });
+        console.error(error);
+        res.status(500).json({ message: 'Server error.', error: error.message });
     }
-  });           
+});
+           
   
   // Get user's pending withdrawals
   router.get('/withdrawals/pending', authenticateUser, async (req, res) => {
