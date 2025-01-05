@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Adjust the path if needed
 const sendEmail = require('../emailUtils'); // Import the sendEmail function
 const { sendReferralMessage } = require('../notification'); // Import the notification logic
+const moment = require('moment'); // To handle time
 require('dotenv').config();
 
 const router = express.Router();
@@ -18,7 +19,7 @@ const generateWalletAddress = () => {
 
 // Generate referral link
 const generateReferralLink = (username) => {
-  return `https://bitfluxcapital.netlify.app/register?ref=${username}`;
+  return `https://bitfluxcapital.netlify.app/?ref=${username}`;
 };
 
 // Generate Reset Token
@@ -100,6 +101,7 @@ const transporter = nodemailer.createTransport({
         email,
         recoveryQuestion,
         recoveryAnswer,
+        upline: referredBy || null, // Fix here
         walletAddress,
         referralLink,
         agreedToTerms,
@@ -177,6 +179,7 @@ const transporter = nodemailer.createTransport({
           email,
           walletAddress,
           referralLink,
+          upline: referredBy || null, // Fix here
         },
       });
     } catch (error) {
@@ -265,47 +268,45 @@ const transporter = nodemailer.createTransport({
       res.status(200).json({
         message: 'Login successful.',
         userDetails: {
-            id: user._id,
-            fullName: user.fullName,
-            username: user.username,
-            email: user.email,
-            recoveryQuestion: user.recoveryQuestion,
-            recoveryAnswer: user.recoveryAnswer,
-            bitcoinWallet: user.bitcoinWallet,
-            ethereumWallet: user.ethereumWallet,
-            usdtWallet: user.usdtWallet,
-            referralLink: user.referralLink,
-            walletAddress: user.walletAddress,
-            bitcoinAvailable: user.bitcoinAvailable,
-            bitcoinPending: user.bitcoinPending,
-            ethereumAvailable: user.ethereumAvailable,
-            ethereumPending: user.ethereumPending,
-            usdtAvailable: user.usdtAvailable,
-            usdtPending: user.usdtPending,
-            pendingBalance:user.pendingBalance,
-            totalWithdrawals: user.totalWithdrawals,
-            availableBalance: user.availableBalance,
-            totalEarnings: user.totalEarnings,
-            activeDeposit:user.activeDeposit,
-            pendingDeposit: user.pendingDeposit, // New field
-            profileRate: user.profileRate, // New field
-            lastSeen: user.lastSeen,
-            isOnline: user.isOnline,
-            location: user.location,
-            referrals: user.referrals,
-            investments: user.investments, // New field
-            investments: user.investments,
-            emailVerified: user.emailVerified,
-            isDisabled: user.isDisabled,
-            isSuspended: user.isSuspended,
-            role: user.role,
-            upline: user.upline, // New field
-            agreedToTerms: user.agreedToTerms, // New field
+          id: user._id,
+          fullName: user.fullName,
+          username: user.username,
+          email: user.email,
+          recoveryQuestion: user.recoveryQuestion,
+          // Avoid exposing recoveryAnswer unless needed
+          bitcoinWallet: user.bitcoinWallet,
+          ethereumWallet: user.ethereumWallet,
+          usdtWallet: user.usdtWallet,
+          referralLink: user.referralLink,
+          walletAddress: user.walletAddress,
+          bitcoinAvailable: user.bitcoinAvailable,
+          bitcoinPending: user.bitcoinPending,
+          ethereumAvailable: user.ethereumAvailable,
+          ethereumPending: user.ethereumPending,
+          usdtAvailable: user.usdtAvailable,
+          usdtPending: user.usdtPending,
+          pendingBalance: user.pendingBalance,
+          totalWithdrawals: user.totalWithdrawals,
+          availableBalance: user.availableBalance,
+          totalEarnings: user.totalEarnings,
+          activeDeposit: user.activeDeposit,
+          pendingDeposit: user.pendingDeposit,
+          profileRate: user.profileRate,
+          lastSeen: user.lastSeen,
+          isOnline: user.isOnline,
+          location: user.location,
+          referrals: user.referrals,
+          investments: user.investments,
+          emailVerified: user.emailVerified,
+          isDisabled: user.isDisabled,
+          isSuspended: user.isSuspended,
+          role: user.role,
+          upline: user.upline,
+          agreedToTerms: user.agreedToTerms,
         },
         token, // Return token
-        additionalDetails, // Include additional details for admin
-
-    });
+        additionalDetails
+      });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error. Please try again later.' });
@@ -365,7 +366,6 @@ router.post('/reset-password', async (req, res) => {
     res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 });
-
   
  // Endpoint to update the balance for Bitcoin, Ethereum, or USDT
 router.put('/update-balance', async (req, res) => {
@@ -494,7 +494,7 @@ router.get('/all-users', async (req, res) => {
 
   // Endpoint to handle referral link clicks
   router.post('/referral', async (req, res) => {
-    const { referralLink, referredUsername, email, fullName, password, recoveryQuestion, recoveryAnswer } = req.body;
+    const { referralLink, referredUsername, email, fullName, password, recoveryQuestion, recoveryAnswer} = req.body;
 
     try {
         // Find the user who owns the referral link
@@ -523,12 +523,12 @@ router.get('/all-users', async (req, res) => {
             email,
             referralLink: newReferralLink,
             walletAddress,
-            upline: referrer.username,
             agreedToTerms: true,
             fullName,
             password: hashedPassword,
             recoveryQuestion,
             recoveryAnswer,
+            upline: referrer.username,
         });
 
         await newUser.save();
@@ -609,113 +609,232 @@ Thank you for joining us,
     }
   };
 
+  // Define investment plans directly
+  const investmentPlans = {
+    "Starter Plan": { dailyRate: 6, duration: 3, min: 50, max: 999 },
+    "Premium Plan": { dailyRate: 10, duration: 5, min: 1000, max: 4999 },
+    "Professional Plan": { dailyRate: 15, duration: 5, min: 5000, max: Infinity },
+  };
+  
+  const supportedPaymentMethods = ["bitcoin", "usdt", "ethereum"];
+  
   router.post('/invest', async (req, res) => {
+    const userId = req.headers['user-id'] || req.body.userId;
+    const { selectedPackage, paymentMethod, amount } = req.body;
+  
+    // Validate input
+    if (!userId || !selectedPackage || !paymentMethod || !amount) {
+      return res.status(400).json({ success: false, message: 'All fields are required.' });
+    }
+  
+    // Check if the selected package exists
+    const packageDetails = investmentPlans[selectedPackage];
+    if (!packageDetails) {
+      return res.status(400).json({ success: false, message: 'Invalid investment package.' });
+    }
+  
+    // Check if the payment method is supported
+    if (!supportedPaymentMethods.includes(paymentMethod.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid payment method.' });
+    }
+  
+    // Validate the amount according to the selected plan
+    if (amount < packageDetails.min || amount > packageDetails.max) {
+      return res.status(400).json({ success: false, message: `Investment amount must be between $${packageDetails.min} and $${packageDetails.max}.` });
+    }
+  
     try {
-        const userId = req.headers['user-id'] || req.body.userId;
-        const { selectedPackage, paymentMethod, amount } = req.body;
-
-        // Validate inputs
-        if (!userId) {
-            return res.status(400).json({ message: 'User ID is required.' });
-        }
-        if (!selectedPackage || !paymentMethod || !amount) {
-            return res.status(400).json({ message: 'All fields are required.' });
-        }
-
-        // Find the user
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
-
-        // Define available plans with corresponding rates and durations
-        // const plans = {
-        //     'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
-        //     'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
-        //     'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
-        // };
-
-        const plans = {
-          'Starter Plan': { rate: 0.0333, duration: 3 }, // 3.33% daily for 3 days (adjusted)
-          'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
-          'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+      // Find the user
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found.' });
+      }
+  
+      // Create a new investment record
+      const investment = {
+        selectedPackage,
+        paymentMethod,
+        amount,
+        status: 'pending',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + packageDetails.duration * 24 * 60 * 60 * 1000),
+        isProfitAdded: false,
+        totalProfit: 0,
       };
+  
+      // Add the investment to the user's record
+      user.investments.push(investment);
+  
+      // Update user's active deposit
+      user.activeDeposit += amount;
+  
+      // Save the updated user record
+      await user.save();
+  
+      // Referral bonus logic
+      if (user.upline && user.upline !== 'N/A') {
+        const referrer = await User.findOne({ username: user.upline });
+        if (referrer) {
+          referrer.availableBalance += 10; // Add $10 referral bonus
+          await referrer.save();
+          console.log(`Referral bonus of $10 added to ${referrer.username}`);
+        }
+      }
+  
+      // Calculate and add earnings daily based on the daily rate
+      const dailyEarning = (amount * packageDetails.dailyRate) / 100;
+  
+      const addDailyEarnings = async () => {
+        const currentDate = moment();
+        const expiresDate = moment(investment.expiresAt);
+  
+        // Check if the investment duration has ended
+        if (currentDate.isAfter(expiresDate)) {
+          investment.status = 'completed';
+          await user.save();
+          return;
+        }
+  
+        // Add the daily earning
+        user.totalEarnings += dailyEarning;
+        investment.totalProfit += dailyEarning;
+  
+        // Save updated data
+        await user.save();
+      };
+  
+      // Schedule the daily earnings calculation
+      setInterval(async () => {
+        await addDailyEarnings();
+      }, 24 * 60 * 60 * 1000);
+  
+      return res.status(201).json({
+        success: true,
+        message: 'Investment added successfully and earnings will be calculated daily.',
+        investmentDetails: {
+          selectedPackage,
+          paymentMethod,
+          amount,
+          totalProfit: investment.totalProfit,
+          duration: packageDetails.duration,
+        },
+      });
+    } catch (error) {
+      console.error('Error while adding investment:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'An error occurred while processing your investment.',
+      });
+    }
+  });  
+
+//   router.post('/invest', async (req, res) => {
+//     try {
+//         const userId = req.headers['user-id'] || req.body.userId;
+//         const { selectedPackage, paymentMethod, amount } = req.body;
+
+//         // Validate inputs
+//         if (!userId) {
+//             return res.status(400).json({ message: 'User ID is required.' });
+//         }
+//         if (!selectedPackage || !paymentMethod || !amount) {
+//             return res.status(400).json({ message: 'All fields are required.' });
+//         }
+
+//         // Find the user
+//         const user = await User.findById(userId);
+//         if (!user) {
+//             return res.status(404).json({ message: 'User not found.' });
+//         }
+
+//         // Define available plans with corresponding rates and durations
+//         // const plans = {
+//         //     'Starter Plan': { rate: 0.06, duration: 3 }, // 6% daily for 3 days
+//         //     'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+//         //     'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+//         // };
+
+//         const plans = {
+//           'Starter Plan': { rate: 0.0333, duration: 3 }, // 3.33% daily for 3 days (adjusted)
+//           'Premium Plan': { rate: 0.10, duration: 5 }, // 10% daily for 5 days
+//           'Professional Plan': { rate: 0.15, duration: 5 }, // 15% daily for 5 days
+//       };
       
 
-        // Check if the selected package is valid
-        if (!plans[selectedPackage]) {
-            return res.status(400).json({ message: 'Invalid package selected.' });
-        }
+//         // Check if the selected package is valid
+//         if (!plans[selectedPackage]) {
+//             return res.status(400).json({ message: 'Invalid package selected.' });
+//         }
 
-        // Calculate the expiration date based on the selected plan
-        const plan = plans[selectedPackage];
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + plan.duration);
+//         // Calculate the expiration date based on the selected plan
+//         const plan = plans[selectedPackage];
+//         const expiryDate = new Date();
+//         expiryDate.setDate(expiryDate.getDate() + plan.duration);
 
-        // Calculate the profit for the investment
-        const profit = amount * plan.rate * plan.duration;
+//         // Calculate the profit for the investment
+//         const profit = amount * plan.rate * plan.duration;
 
-        // Create a new investment object
-        const newInvestment = {
-            selectedPackage,
-            paymentMethod,
-            amount,
-            status: 'pending',
-            expiresAt: expiryDate,
-        };
+//         // Create a new investment object
+//         const newInvestment = {
+//             selectedPackage,
+//             paymentMethod,
+//             amount,
+//             status: 'pending',
+//             expiresAt: expiryDate,
+//         };
 
-        // Add the investment to the user's investments array
-        user.investments.push(newInvestment);
+//         // Add the investment to the user's investments array
+//         user.investments.push(newInvestment);
 
-        // Update the user's balances
-        user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount;
-        user.profileRate = `${plan.rate * 100}% Daily`;
+//         // Update the user's balances
+//         user.pendingDeposit = (Number(user.pendingDeposit) || 0) + amount;
+//         user.profileRate = `${plan.rate * 100}% Daily`;
 
-        // If it's the user's first active deposit, update activeDeposit
-        if (user.activeDeposit === 0) {
-            user.activeDeposit = amount;
-        }
+//         // If it's the user's first active deposit, update activeDeposit
+//         if (user.activeDeposit === 0) {
+//             user.activeDeposit = amount;
+//         }
 
-        user.totalEarnings += profit;
+//         user.totalEarnings += profit;
 
-        // Check if the user was referred
-        if (user.upline && user.upline !== 'N/A') {
-            const referrer = await User.findOne({ username: user.upline });
-            if (referrer) {
-              const commission = 10; // Fixed commission of 10 for the referrer
-                referrer.referrals.push({
-                    referredBy: user.username,
-                    status: 'active',
-                    commission,
-                });
-                referrer.totalEarnings += commission;
+//         // Check if the user was referred
+//         if (user.upline && user.upline !== 'N/A') {
+//             const referrer = await User.findOne({ username: user.upline });
+//             if (referrer) {
+//               const commission = 10; // Fixed commission of 10 for the referrer
+//                 referrer.referrals.push({
+//                     referredBy: user.username,
+//                     status: 'active',
+//                     commission,
+//                 });
+//                 referrer.totalEarnings += commission;
 
-                // Send an email to the referrer about the commission
-                const message = `Hello ${referrer.username}, ${user.username} has invested $${amount} using your referral link. You have earned a commission of $${commission}.`;
-                await sendReferralMessage(referrer, message);
+//                 // Send an email to the referrer about the commission
+//                 const message = `Hello ${referrer.username}, ${user.username} has invested $${amount} using your referral link. You have earned a commission of $${commission}.`;
+//                 await sendReferralMessage(referrer, message);
 
-                // Save referrer details
-                await referrer.save();
-            }
-        }
+//                 // Save referrer details
+//                 await referrer.save();
+//             }
+//         }
 
-        // Save the updated user record
-        await user.save();
+//         // Save the updated user record
+//         await user.save();
 
-        // Respond with the new investment details and success message
-        res.status(200).json({
-            message: 'Investment submitted successfully.',
-            investment: newInvestment,
-            pendingDeposit: user.pendingDeposit,
-            activeDeposit: user.activeDeposit,
-            profileRate: user.profileRate,
-            totalEarnings: user.totalEarnings,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error.', error: error.message });
-    }
-});
+//         // Respond with the new investment details and success message
+//         res.status(200).json({
+//             message: 'Investment submitted successfully.',
+//             investment: newInvestment,
+//             pendingDeposit: user.pendingDeposit,
+//             activeDeposit: user.activeDeposit,
+//             profileRate: user.profileRate,
+//             totalEarnings: user.totalEarnings,
+//         });
+//     } catch (error) {
+//         console.error(error);
+//         res.status(500).json({ message: 'Server error.', error: error.message });
+//     }
+// });
            
   
   // Get user's pending withdrawals
@@ -766,76 +885,194 @@ const calculateEarnings = (amount) => {
   return amount * earningsRate;
 };
 
+// router.patch('/admin/withdrawals/:action', async (req, res) => {
+//   try {
+//     const { action } = req.params; // "approve" or "reject"
+//     const { investmentId } = req.body;
+
+//     if (!investmentId) {
+//       return res.status(400).json({ message: 'Investment ID is required.' });
+//     }
+
+//     const user = await User.findOne({ 'investments._id': investmentId });
+//     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+//     const investment = user.investments.id(investmentId);
+//     if (!investment || investment.status !== 'pending') {
+//       return res.status(400).json({ message: 'Invalid or already processed investment.' });
+//     }
+
+//     const plans = {
+//       'Starter Plan': { dailyProfit: 6, duration: 3 },
+//       'Premium Plan': { dailyProfit: 10, duration: 5 },
+//       'Professional Plan': { dailyProfit: 15, duration: 6 },
+//     };
+
+//     const plan = plans[investment.selectedPackage];
+//     if (!plan) {
+//       return res.status(400).json({ message: 'Invalid plan selected.' });
+//     }
+
+//     if (action === 'approve') {
+//       investment.status = 'approved';
+//       investment.expiresAt = new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000);
+
+//       // Deduct from pendingDeposit and move to activeDeposit
+//       if (user.pendingDeposit >= investment.amount) {
+//         user.pendingDeposit -= investment.amount;
+//         user.activeDeposit += investment.amount;
+//       } else {
+//         return res.status(400).json({ message: 'Insufficient pending deposit.' });
+//       }
+
+//       const totalProfit = plan.dailyProfit * plan.duration;
+
+//       // Schedule profit addition
+//       setTimeout(async () => {
+//         const userUpdate = await User.findById(user._id);
+//         userUpdate.availableBalance += totalProfit + investment.amount;
+//         userUpdate.totalEarnings += totalProfit;
+//         userUpdate.activeDeposit -= investment.amount;
+//         const updatedInvestment = userUpdate.investments.id(investmentId);
+//         if (updatedInvestment) updatedInvestment.status = 'completed';
+//         await userUpdate.save();
+//       }, plan.duration * 24 * 60 * 60 * 1000);
+
+//       await user.save();
+
+//       return res.status(200).json({
+//         message: 'Investment approved successfully.',
+//         investment,
+//         activeDeposit: user.activeDeposit,
+//       });
+//     } else if (action === 'reject') {
+//       investment.status = 'rejected';
+//       await user.save();
+//       return res.status(200).json({ message: 'Investment rejected successfully.', investment });
+//     } else {
+//       return res.status(400).json({ message: 'Invalid action.' });
+//     }
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error.', error: error.message });
+//   }
+// });
+
 router.patch('/admin/withdrawals/:action', async (req, res) => {
   try {
     const { action } = req.params; // "approve" or "reject"
-    const { investmentId } = req.body;
+    const { investmentId, userId } = req.body;
 
-    if (!investmentId) {
-      return res.status(400).json({ message: 'Investment ID is required.' });
+    if (!investmentId || !userId) {
+      return res.status(400).json({ success: false, message: 'Investment ID and User ID are required.' });
     }
 
-    const user = await User.findOne({ 'investments._id': investmentId });
-    if (!user) return res.status(404).json({ message: 'User not found.' });
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
 
+    // Find the specific investment
     const investment = user.investments.id(investmentId);
-    if (!investment || investment.status !== 'pending') {
-      return res.status(400).json({ message: 'Invalid or already processed investment.' });
+    if (!investment) {
+      return res.status(404).json({ success: false, message: 'Investment not found.' });
     }
 
-    const plans = {
-      'Starter Plan': { dailyProfit: 6, duration: 3 },
-      'Premium Plan': { dailyProfit: 10, duration: 5 },
-      'Professional Plan': { dailyProfit: 15, duration: 6 },
+    // Ensure the investment is pending for processing
+    if (investment.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Investment is already processed or invalid.' });
+    }
+
+    const investmentPlans = {
+      'Starter Plan': { dailyRate: 6, duration: 3 },
+      'Premium Plan': { dailyRate: 10, duration: 5 },
+      'Professional Plan': { dailyRate: 15, duration: 6 },
     };
 
-    const plan = plans[investment.selectedPackage];
-    if (!plan) {
-      return res.status(400).json({ message: 'Invalid plan selected.' });
+    const packageDetails = investmentPlans[investment.selectedPackage];
+    if (!packageDetails) {
+      return res.status(400).json({ success: false, message: 'Invalid investment package.' });
     }
 
     if (action === 'approve') {
+      // Approve investment
       investment.status = 'approved';
-      investment.expiresAt = new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000);
+      investment.expiresAt = new Date(Date.now() + packageDetails.duration * 24 * 60 * 60 * 1000);
+      investment.isProfitAdded = false;
 
-      // Deduct from pendingDeposit and move to activeDeposit
+      // Deduct from pendingDeposit and add to activeDeposit
       if (user.pendingDeposit >= investment.amount) {
         user.pendingDeposit -= investment.amount;
         user.activeDeposit += investment.amount;
       } else {
-        return res.status(400).json({ message: 'Insufficient pending deposit.' });
+        return res.status(400).json({ success: false, message: 'Insufficient pending deposit.' });
       }
 
-      const totalProfit = plan.dailyProfit * plan.duration;
+      // Check referral and apply commission
+      if (user.upline && user.upline !== 'N/A') {
+        const referrer = await User.findOne({ username: user.upline });
+        if (referrer) {
+          const commission = 10; // Fixed $10 commission
+          referrer.availableBalance += commission;
+          referrer.totalEarnings += commission;
 
-      // Schedule profit addition
-      setTimeout(async () => {
-        const userUpdate = await User.findById(user._id);
-        userUpdate.availableBalance += totalProfit + investment.amount;
-        userUpdate.totalEarnings += totalProfit;
-        userUpdate.activeDeposit -= investment.amount;
-        const updatedInvestment = userUpdate.investments.id(investmentId);
-        if (updatedInvestment) updatedInvestment.status = 'completed';
-        await userUpdate.save();
-      }, plan.duration * 24 * 60 * 60 * 1000);
+          // Save the referrer
+          await referrer.save();
 
+          // Send email notification to the referrer
+          const mailOptions = {
+            from: process.env.EMAIL,
+            to: referrer.email,
+            subject: 'Referral Commission Received',
+            text: `Congratulations! You have earned a commission of $${commission} because ${user.username} invested using your referral link.`,
+          };
+
+          transporter.sendMail(mailOptions, (err, info) => {
+            if (err) {
+              console.error('Error sending email:', err);
+            } else {
+              console.log('Email sent:', info.response);
+            }
+          });
+        }
+      }
+
+       // Schedule to add amount and profit to available balance after the investment duration
+  setTimeout(async () => {
+    const userToUpdate = await User.findById(userId);
+    const investmentToUpdate = userToUpdate?.investments.id(investmentId);
+
+    if (investmentToUpdate && !investmentToUpdate.isProfitAdded) {
+      const totalProfit = investmentToUpdate.amount * (packageDetails.dailyRate / 100) * packageDetails.duration;
+      const totalAmount = investmentToUpdate.amount + totalProfit;
+
+      userToUpdate.availableBalance += totalAmount;
+      investmentToUpdate.isProfitAdded = true;
+
+      await userToUpdate.save();
+      console.log(`Investment profit of $${totalProfit} added to user ${userId}'s balance.`);
+    }
+  }, packageDetails.duration * 24 * 60 * 60 * 1000);
+
+      // Save the user's investment changes
       await user.save();
 
       return res.status(200).json({
-        message: 'Investment approved successfully.',
-        investment,
-        activeDeposit: user.activeDeposit,
+        success: true,
+        message: 'Investment approved successfully. Referral commission applied (if applicable).',
       });
     } else if (action === 'reject') {
+      // Reject investment
       investment.status = 'rejected';
       await user.save();
-      return res.status(200).json({ message: 'Investment rejected successfully.', investment });
+      return res.status(200).json({ success: true, message: 'Investment rejected.' });
     } else {
-      return res.status(400).json({ message: 'Invalid action.' });
+      return res.status(400).json({ success: false, message: 'Invalid action.' });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error.', error: error.message });
+    console.error('Error processing investment:', error);
+    return res.status(500).json({ success: false, message: 'An error occurred while processing the investment.' });
   }
 });
   
