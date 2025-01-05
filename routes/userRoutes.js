@@ -649,7 +649,15 @@ Thank you for joining us,
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found.' });
       }
-  
+
+       // Check if the user has sufficient balance
+    if (user.availableBalance < amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient balance. Please deposit funds to proceed.',
+      });
+    }
+    
       // Create a new investment record
       const investment = {
         selectedPackage,
@@ -697,6 +705,7 @@ Thank you for joining us,
   
         // Add the daily earning
         user.totalEarnings += dailyEarning;
+        user.activeDeposit += dailyEarning; // Add profit to activeDeposit
         investment.totalProfit += dailyEarning;
   
         // Save updated data
