@@ -1011,12 +1011,12 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
       investment.isProfitAdded = false;
 
       // Deduct from pendingDeposit and add to activeDeposit
-      if (user.pendingDeposit >= investment.amount) {
-        user.pendingDeposit -= investment.amount;
-        user.activeDeposit += investment.amount;
-      } else {
-        return res.status(400).json({ success: false, message: 'Insufficient pending deposit.' });
-      }
+      // if (user.pendingDeposit >= investment.amount) {
+      //   user.pendingDeposit -= investment.amount;
+      //   user.activeDeposit += investment.amount;
+      // } else {
+      //   return res.status(400).json({ success: false, message: 'Insufficient pending deposit.' });
+      // }
 
       // Check referral and apply commission
       if (user.upline && user.upline !== 'N/A') {
