@@ -650,14 +650,14 @@ Thank you for joining us,
         return res.status(404).json({ success: false, message: 'User not found.' });
       }
 
-       // Check if the user has sufficient balance
-    if (user.availableBalance < amount) {
-      return res.status(400).json({
-        success: false,
-        message: 'Insufficient balance. Please deposit funds to proceed.',
-      });
-    }
-    
+    //    // Check if the user has sufficient balance
+    // if (user.availableBalance < amount) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Insufficient balance. Please deposit funds to proceed.',
+    //   });
+    // }
+
       // Create a new investment record
       const investment = {
         selectedPackage,
@@ -1046,7 +1046,6 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
           });
         }
       }
-
        // Schedule to add amount and profit to available balance after the investment duration
   setTimeout(async () => {
     const userToUpdate = await User.findById(userId);
@@ -1082,6 +1081,32 @@ router.patch('/admin/withdrawals/:action', async (req, res) => {
   } catch (error) {
     console.error('Error processing investment:', error);
     return res.status(500).json({ success: false, message: 'An error occurred while processing the investment.' });
+  }
+});
+
+// Endpoint to get all investments with statuses 'approved', 'completed', or 'pending'
+router.get('/user/investments', async (req, res) => {
+  try {
+    // Fetch users with specific investment statuses (approved, completed, pending)
+    const users = await User.find({
+      'investments.status': { $in: ['approved', 'completed', 'pending'] }
+    }).select('investments'); // Optionally, you can select specific fields
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'No users found with investments.' });
+    }
+
+    // Flatten investments for easier access
+    const allInvestments = users.flatMap(user => 
+      user.investments.filter(investment => 
+        ['approved', 'completed', 'pending'].includes(investment.status)
+      )
+    );
+
+    return res.status(200).json(allInvestments);
+  } catch (error) {
+    console.error('Error retrieving investments:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
   
