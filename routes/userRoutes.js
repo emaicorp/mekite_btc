@@ -148,7 +148,7 @@ const transporter = nodemailer.createTransport({
         3. Share your referral link to invite friends and grow your network.
         
         **Need Help?**
-        If you have any questions, encounter any issues, or need assistance, please don't hesitate to reach out to our support team at support@yourapp.com. We're here to help you every step of the way.
+        If you have any questions, encounter any issues, or need assistance, please don't hesitate to reach out to our support team at bitfluxcapital@gmail.com. We're here to help you every step of the way.
         
         ---
         
