@@ -2,33 +2,17 @@
  * Investment utility functions for calculating profits, ROI, and validating investments
  */
 
-const INVESTMENT_PLANS = {
-  STARTER: {
-    name: 'Starter',
-    minAmount: 100,
-    maxAmount: 1000,
-    dailyProfit: 0.5, // 0.5%
-    duration: 30 // days
-  },
-  ADVANCED: {
-    name: 'Advanced',
-    minAmount: 1001,
-    maxAmount: 5000,
-    dailyProfit: 1.0, // 1%
-    duration: 30
-  },
-  PREMIUM: {
-    name: 'Premium',
-    minAmount: 5001,
-    maxAmount: 50000,
-    dailyProfit: 1.5, // 1.5%
-    duration: 30
-  }
-};
+const InvestmentPlan = require('../models/InvestmentPlan');
 
-function calculateProfit(amount, selectedPackage) {
-  const plan = INVESTMENT_PLANS[selectedPackage.toUpperCase()];
-  if (!plan) throw new Error('Invalid investment package');
+
+
+const calculateProfit = async (amount, selectedPackage) => {
+  console.log(selectedPackage);
+  const plan = await InvestmentPlan.findOne({ name: selectedPackage });
+  
+  if (!plan) {
+    throw new Error(`Invalid investment package: ${selectedPackage}`);
+  }
 
   const dailyProfit = (amount * plan.dailyProfit) / 100;
   const totalProfit = dailyProfit * plan.duration;
@@ -38,10 +22,10 @@ function calculateProfit(amount, selectedPackage) {
     totalProfit,
     duration: plan.duration
   };
-}
+};
 
-function validateInvestment(amount, selectedPackage) {
-  const plan = INVESTMENT_PLANS[selectedPackage.toUpperCase()];
+const validateInvestment = async (amount, selectedPackage) => {
+  const plan = await InvestmentPlan.findOne({ name: selectedPackage });
   if (!plan) {
     return {
       isValid: false,
@@ -60,27 +44,26 @@ function validateInvestment(amount, selectedPackage) {
     isValid: true,
     plan
   };
-}
+};
 
-function calculateROI(initialAmount, currentAmount) {
+const calculateROI = (initialAmount, currentAmount) => {
   return ((currentAmount - initialAmount) / initialAmount) * 100;
-}
+};
 
-function getInvestmentPlans() {
-  return Object.values(INVESTMENT_PLANS);
-}
+const getInvestmentPlans = async () => {
+  return await InvestmentPlan.find().sort({ minAmount: 1 });
+};
 
-function calculateExpiryDate(startDate, packageName) {
-  const plan = INVESTMENT_PLANS[packageName.toUpperCase()];
+const calculateExpiryDate = async (startDate, packageName) => {
+  const plan = await InvestmentPlan.findOne({ name: packageName });
   if (!plan) throw new Error('Invalid investment package');
 
   const expiryDate = new Date(startDate);
   expiryDate.setDate(expiryDate.getDate() + plan.duration);
   return expiryDate;
-}
+};
 
 module.exports = {
-  INVESTMENT_PLANS,
   calculateProfit,
   validateInvestment,
   calculateROI,

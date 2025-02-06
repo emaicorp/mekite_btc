@@ -1,6 +1,8 @@
 const InvestmentService = require('../services/investmentService');
 const UserService = require('../services/userService');
 const EmailService = require('../services/emailService');
+const Investment = require('../models/Investment');
+const User = require('../models/User');
 
 class InvestmentController {
   static async createInvestment(req, res) {
@@ -86,6 +88,69 @@ class InvestmentController {
     } catch (error) {
       console.error('Update investment status error:', error);
       res.status(500).json({ message: 'Server error while updating investment status.' });
+    }
+  }
+
+  static async getAllInvestments(req, res) {
+    try {
+      const { status, page = 1, limit = 10 } = req.query;
+      const query = status ? { status } : {};
+      
+      const investments = await Investment.find(query)
+        .populate('userId', 'username email fullName')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit);
+
+      const total = await Investment.countDocuments(query);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          investments,
+          total,
+          page: parseInt(page),
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async deleteInvestment(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const investment = await Investment.findById(id);
+      if (!investment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Investment not found'
+        });
+      }
+
+      // Remove investment reference from user
+      await User.findByIdAndUpdate(
+        investment.userId,
+        { $pull: { investments: id } }
+      );
+
+      // Delete the investment
+      await Investment.findByIdAndDelete(id);
+
+      res.status(200).json({
+        success: true,
+        message: 'Investment deleted successfully'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 }

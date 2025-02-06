@@ -1,12 +1,30 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { Schema } = mongoose;
 
 const UserSchema = new Schema({
   // Authentication & Profile
   fullName: { type: String, required: true },
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    minlength: 3
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 5
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true
+  },
   emailVerified: { type: Boolean, default: false },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
   agreedToTerms: { type: Boolean, required: true },
@@ -55,13 +73,8 @@ const UserSchema = new Schema({
   // Investment Related
   profileRate: { type: String, default: '' },
   investments: [{
-    selectedPackage: String,
-    paymentMethod: String,
-    amount: Number,
-    status: { type: String, enum: ['pending', 'approved', 'completed'], default: 'pending' },
-    createdAt: { type: Date, default: Date.now },
-    expiresAt: Date,
-    isProfitAdded: { type: Boolean, default: false },
+    type: Schema.Types.ObjectId,
+    ref: 'Investment'
   }],
   
   // Location Tracking
@@ -69,7 +82,27 @@ const UserSchema = new Schema({
     ip: { type: String },
     country: { type: String },
     city: { type: String },
+  },
+
+  // Add these references for population
+  referredBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  transactions: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Transaction'
+  }],
+  status: {
+    type: String,
+    enum: ['active', 'suspended', 'banned'],
+    default: 'active'
+  },
+  lastLogin: {
+    type: Date
   }
+}, {
+  timestamps: true
 });
 
 // Middleware to recalculate pendingBalance
@@ -79,4 +112,6 @@ UserSchema.pre('save', function (next) {
   next();
 });
 
-module.exports = mongoose.model('User', UserSchema);
+const User = mongoose.model('User', UserSchema);
+
+module.exports = User;

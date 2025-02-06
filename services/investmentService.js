@@ -24,7 +24,7 @@ class InvestmentService {
 
   static async createInvestment(userId, selectedPackage, paymentMethod, amount) {
     try {
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).select('investments');
       if (!user) throw new Error('User not found');
 
       const investment = new Investment({
@@ -38,8 +38,13 @@ class InvestmentService {
       });
 
       await investment.save();
-      user.investments.push(investment);
-      await user.save();
+
+      // Update user's investments array without triggering full validation
+      await User.findByIdAndUpdate(
+        userId,
+        { $push: { investments: investment._id } },
+        { new: true, runValidators: false }
+      );
 
       return investment;
     } catch (error) {
@@ -49,10 +54,9 @@ class InvestmentService {
 
   static async getUserInvestments(userId) {
     try {
-      const user = await User.findById(userId);
-      if (!user) throw new Error('User not found');
-
-      return user.investments;
+      const investments = await Investment.find({ userId })
+        .sort({ createdAt: -1 });
+      return investments;
     } catch (error) {
       throw new Error(`Error fetching investments: ${error.message}`);
     }
@@ -108,12 +112,13 @@ class InvestmentService {
       const user = await User.findById(investment.userId);
       if (!user) throw new Error('User not found');
 
-      const profit = calculateProfit(investment.amount, investment.selectedPackage);
-      user.totalEarnings += profit;
+      const profit = await calculateProfit(investment.amount, investment.selectedPackage);
+      user.totalEarnings += profit.dailyProfit;
       await user.save();
 
-      return { user, profit };
+      return { user, profit: profit.dailyProfit };
     } catch (error) {
+      console.log("error", error);
       throw new Error(`Error calculating profit: ${error.message}`);
     }
   }

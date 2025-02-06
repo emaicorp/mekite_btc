@@ -1,5 +1,7 @@
 const WalletService = require('../services/walletService');
 const EmailService = require('../services/emailService');
+const Wallet = require('../models/Wallet');
+const Transaction = require('../models/Transaction');
 
 class WalletController {
   static async updateBalance(req, res) {
@@ -62,29 +64,131 @@ class WalletController {
 
   static async getBalance(req, res) {
     try {
-      const userId = req.user.id;
-      const balance = await WalletService.getUserBalance(userId);
+      const wallet = await Wallet.findOne({ userId: req.user.id });
+      if (!wallet) {
+        return res.status(404).json({
+          success: false,
+          message: 'Wallet not found'
+        });
+      }
 
-      res.status(200).json({ success: true, balance });
+      res.json({
+        success: true,
+        data: {
+          balance: wallet.balance,
+          currency: wallet.currency,
+          lastUpdated: wallet.updatedAt
+        }
+      });
     } catch (error) {
-      console.error('Get balance error:', error);
-      res.status(500).json({ message: 'Server error while fetching balance.' });
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 
   static async fundWallet(req, res) {
     try {
-      const { userId, currency, amount } = req.body;
+      const { userId, amount, currency, note } = req.body;
+      const wallet = await Wallet.findOne({ userId });
 
-      const result = await WalletService.fundUserWallet(userId, currency, amount);
-      
-      res.status(200).json({
-        message: 'Wallet funded successfully',
-        ...result
+      if (!wallet) {
+        return res.status(404).json({
+          success: false,
+          message: 'Wallet not found'
+        });
+      }
+
+      wallet.balance += amount;
+      await wallet.save();
+
+      const transaction = await Transaction.create({
+        userId,
+        type: 'deposit',
+        amount,
+        currency,
+        status: 'completed',
+        description: note || `Admin funding of ${amount} ${currency}`
+      });
+
+      res.json({
+        success: true,
+        data: {
+          wallet,
+          transaction
+        }
       });
     } catch (error) {
-      console.error('Fund wallet error:', error);
-      res.status(500).json({ message: 'Server error during wallet funding.' });
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async getTransactions(req, res) {
+    try {
+      const { type, status, page = 1, limit = 10 } = req.query;
+      const query = { userId: req.user.id };
+
+      if (type) query.type = type;
+      if (status) query.status = status;
+
+      const transactions = await Transaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit);
+
+      const totalCount = await Transaction.countDocuments(query);
+
+      res.json({
+        success: true,
+        data: {
+          transactions,
+          totalCount,
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalCount / limit)
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async updateAddresses(req, res) {
+    try {
+      const { bitcoin, ethereum, usdt } = req.body;
+      const wallet = await Wallet.findOne({ userId: req.user.id });
+
+      if (!wallet) {
+        return res.status(404).json({
+          success: false,
+          message: 'Wallet not found'
+        });
+      }
+
+      wallet.addresses = {
+        ...wallet.addresses,
+        ...(bitcoin && { bitcoin }),
+        ...(ethereum && { ethereum }),
+        ...(usdt && { usdt })
+      };
+
+      await wallet.save();
+
+      res.json({
+        success: true,
+        data: wallet
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 }

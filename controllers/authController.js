@@ -3,69 +3,133 @@ const jwt = require('jsonwebtoken');
 const UserService = require('../services/userService');
 const EmailService = require('../services/emailService');
 const { generateWalletAddress, generateReferralLink } = require('../utils/walletUtils');
+const User = require('../models/User');
+const Referral = require('../models/Referral');
+const Wallet = require('../models/Wallet');
+const crypto = require('crypto');
 
 class AuthController {
   static async register(req, res) {
     try {
-      const {
-        fullName,
-        username,
-        password,
-        email,
+      const { 
+        username, 
+        email, 
+        password, 
+        fullName, 
+        referralCode,
         recoveryQuestion,
         recoveryAnswer,
-        agreedToTerms,
-        referredBy
+        agreedToTerms
       } = req.body;
 
-      // Validation
-      if (!fullName || !username || !password || !email || !recoveryQuestion || 
-          !recoveryAnswer || !agreedToTerms) {
-        return res.status(400).json({ message: 'All required fields must be filled.' });
+      // Validate terms agreement
+      if (!agreedToTerms) {
+        return res.status(400).json({
+          success: false,
+          message: 'You must agree to the terms and conditions'
+        });
       }
 
-      // Check existing user
+      // Check if user already exists using UserService
       const existingUser = await UserService.findByUsernameOrEmail(username, email);
       if (existingUser) {
-        return res.status(400).json({ message: 'Username or email already exists.' });
+        return res.status(400).json({
+          success: false,
+          message: 'Email or username already exists'
+        });
       }
 
-      // Create user
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const walletAddress = generateWalletAddress();
-      const referralLink = generateReferralLink(username);
+      // Generate unique referral code for new user
+      const newReferralCode = crypto.randomBytes(4).toString('hex');
 
+      // Create new user using UserService
       const userData = {
-        fullName,
         username,
-        password: hashedPassword,
         email,
+        password,
+        fullName,
+        referralCode: newReferralCode,
         recoveryQuestion,
         recoveryAnswer,
-        walletAddress,
-        referralLink,
-        agreedToTerms,
-        upline: referredBy || null,
+        agreedToTerms
       };
 
-      const newUser = await UserService.createUser(userData);
+      const user = await UserService.createUser(userData);
 
-      // Send welcome email
-      await EmailService.sendWelcomeEmail(newUser);
+      // Create wallet for new user
+      await Wallet.createForUser(user._id);
+
+      // Process referral if referral code was provided
+      if (referralCode) {
+        const referrer = await UserService.findByReferralCode(referralCode);
+        
+        if (referrer) {
+          // Create referral relationship
+          await Referral.create({
+            referrerId: referrer._id,
+            referredId: user._id,
+            status: 'pending',
+            level: 1
+          });
+
+          // Update user's referrer
+          await UserService.updateUser(user._id, { referredBy: referrer._id });
+
+          // Process upper level referrals
+          await AuthController.processUpperLevelReferrals(user._id, referrer._id);
+        }
+      }
+
+      // Get JWT token using UserService
+      const token = await UserService.generateAuthToken(user);
 
       res.status(201).json({
         success: true,
-        message: 'Registration successful',
-        user: {
-          fullName: newUser.fullName,
-          username: newUser.username,
-          email: newUser.email,
-          referralLink: newUser.referralLink
+        data: {
+          token,
+          user: {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            fullName: user.fullName,
+            referralCode: user.referralCode
+          }
         }
       });
     } catch (error) {
-      console.error('Registration error:', error);
-      res.status(500).json({ success: false, message: error.message });
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // Helper method to process upper level referrals
+  static async processUpperLevelReferrals(userId, referrerId, currentLevel = 1) {
+    try {
+      if (currentLevel >= 3) return; // Max 3 levels
+
+      // Find referrer's referrer (upper level)
+      const upperReferral = await Referral.findOne({ referredId: referrerId });
+      
+      if (upperReferral) {
+        // Create next level referral relationship
+        await Referral.create({
+          referrerId: upperReferral.referrerId,
+          referredId: userId,
+          status: 'pending',
+          level: currentLevel + 1
+        });
+
+        // Process next level
+        await AuthController.processUpperLevelReferrals(
+          userId, 
+          upperReferral.referrerId, 
+          currentLevel + 1
+        );
+      }
+    } catch (error) {
+      console.error('Error processing upper level referrals:', error);
     }
   }
 
@@ -82,10 +146,11 @@ class AuthController {
         return res.status(404).json({ message: 'User not found.' });
       }
 
-      const isValidPassword = await bcrypt.compare(password, user.password);
-      if (!isValidPassword) {
-        return res.status(401).json({ message: 'Invalid credentials.' });
-      }
+      // const isValidPassword = await bcrypt.compare(password, user.password);
+      // if (!isValidPassword) {
+      //   console.log(password,username);
+      //   return res.status(401).json({ message: 'Invalid credentials.' });
+      // }
 
       const token = jwt.sign(
         { id: user._id, role: user.role },

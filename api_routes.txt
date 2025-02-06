@@ -1,0 +1,175 @@
+API ROUTES DOCUMENTATION
+=======================
+
+BASE URL: http://localhost:5000/api
+
+AUTHENTICATION ROUTES
+-------------------
+POST /auth/register
+- Register a new user
+- Body: { fullName, username, password, email, recoveryQuestion, recoveryAnswer, agreedToTerms }
+- Returns: User object with token
+
+POST /auth/login
+- Login existing user
+- Body: { username, password }
+- Returns: User object with token
+
+POST /auth/forgot-password
+- Request password reset
+- Body: { email }
+- Returns: Success message
+
+POST /auth/reset-password
+- Reset password with token
+- Body: { token, newPassword }
+- Returns: Success message
+
+POST /auth/change-password (Protected)
+- Change user password
+- Body: { currentPassword, newPassword }
+- Returns: Success message
+
+GET /auth/verify (Protected)
+- Verify JWT token
+- Headers: Authorization: Bearer <token>
+- Returns: User object
+
+CRYPTO ROUTES
+------------
+GET /crypto/chart
+- Get cryptocurrency price chart data
+- Query params: coinId (default: bitcoin), currency (default: usd), days (default: 1)
+- Returns: { prices: [[timestamp, price]], market_caps: [...], total_volumes: [...] }
+
+GET /crypto/price/:coinId
+- Get current price for specific cryptocurrency
+- Params: coinId
+- Query: currency (default: usd)
+- Returns: Current price data
+
+GET /crypto/market-data
+- Get market data for cryptocurrencies
+- Query: currency (default: usd), per_page (default: 100), page (default: 1)
+- Returns: List of cryptocurrencies with market data
+
+INVESTMENT ROUTES (Protected)
+---------------------------
+POST /investments
+- Create new investment
+- Body: { selectedPackage, paymentMethod, amount }
+- Returns: Investment object
+
+GET /investments/user
+- Get user's investments
+- Returns: Array of investments
+
+GET /investments/plans
+- Get available investment plans
+- Returns: Array of investment plans
+
+PUT /investments/:investmentId/status (Admin only)
+- Update investment status
+- Body: { status }
+- Returns: Updated investment object
+
+WALLET ROUTES (Protected)
+-----------------------
+PUT /wallet/update-balance
+- Update wallet balance
+- Body: { walletAddress, currency, balanceChange, isWithdrawal }
+- Returns: Updated balance info
+
+POST /wallet/withdraw
+- Request withdrawal
+- Body: { currency, amount }
+- Returns: Withdrawal request details
+
+GET /wallet/balance
+- Get user's wallet balance
+- Returns: Balance for all currencies
+
+POST /wallet/fund (Admin only)
+- Fund user wallet
+- Body: { userId, currency, amount }
+- Returns: Updated wallet info
+
+REFERRAL ROUTES (Protected)
+-------------------------
+POST /referrals
+- Process new referral
+- Body: { referralCode, newUserId }
+- Returns: Referral details
+
+GET /referrals/commission
+- Get user's referral commissions
+- Returns: Commission data
+
+POST /referrals/commission
+- Update referral commission
+- Body: { referralId, commission }
+- Returns: Updated referral
+
+GET /referrals/list
+- Get user's referral list
+- Returns: List of referrals
+
+ADMIN ROUTES (Admin only)
+-----------------------
+GET /admin/users
+- Get all users
+- Returns: Array of users
+
+POST /admin/manage-user
+- Manage user account
+- Body: { userId, action, reason }
+- Returns: Updated user info
+
+GET /admin/currency-pendings
+- Get pending currency transactions
+- Returns: Array of pending transactions
+
+POST /admin/approve-currency/:userId
+- Approve currency transaction
+- Body: { currency, amount }
+- Returns: Updated transaction
+
+DELETE /admin/users/:id
+- Delete user
+- Returns: Success message
+
+PUT /admin/fund-active-deposit
+- Fund user's active deposit
+- Body: { userId, amount }
+- Returns: Updated user info
+
+PUT /admin/fund-total-earnings
+- Fund user's total earnings
+- Body: { userId, amount }
+- Returns: Updated user info
+
+POST /admin/deduct-deposit
+- Deduct from user's deposit
+- Body: { userId, amount }
+- Returns: Updated user info
+
+PROFILE ROUTES (Protected)
+------------------------
+PUT /profile/update
+- Update user profile
+- Body: Profile update data
+- Returns: Updated profile
+
+GET /profile/activity
+- Get user's activity history
+- Returns: Activity data
+
+GET /profile/stats
+- Get user's statistics
+- Returns: User stats
+
+Notes:
+- Protected routes require JWT token in Authorization header
+- Admin routes require admin role in addition to JWT token
+- All responses include success flag and appropriate HTTP status codes
+- Error responses include error message and details 

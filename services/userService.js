@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 class UserService {
   static async createUser(userData) {
@@ -122,6 +123,34 @@ class UserService {
       );
     } catch (error) {
       throw new Error(`Error updating user status: ${error.message}`);
+    }
+  }
+
+  static async generateAuthToken(user) {
+    return jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+  }
+
+  static async findByReferralCode(referralCode) {
+    try {
+      return await User.findOne({ referralCode });
+    } catch (error) {
+      throw new Error(`Error finding user by referral code: ${error.message}`);
+    }
+  }
+
+  static async updateUser(userId, updateData) {
+    try {
+      return await User.findByIdAndUpdate(
+        userId,
+        updateData,
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`Error updating user: ${error.message}`);
     }
   }
 }

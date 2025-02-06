@@ -4,7 +4,7 @@ const Transaction = require('../models/Transaction');
 class AdminService {
   static async getAllUsers() {
     try {
-      return await User.find().select('-password');
+      return await User.find();
     } catch (error) {
       throw new Error(`Error fetching users: ${error.message}`);
     }
