@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const Wallet = require('../models/Wallet');
 
 class WalletService {
   static async updateBalance(walletAddress, currency, amount, isWithdrawal) {
@@ -115,6 +116,110 @@ class WalletService {
       return { user, updatedBalance: user[availableField] };
     } catch (error) {
       throw new Error(`Error funding wallet: ${error.message}`);
+    }
+  }
+
+  static async getAdminWallets() {
+    try {
+      const adminUser = await User.findOne({ role: 'admin' });
+      if (!adminUser) throw new Error('Admin not found');
+
+      return {
+        bitcoin: adminUser.bitcoinWallet,
+        ethereum: adminUser.ethereumWallet,
+        usdt: adminUser.usdtWallet
+      };
+    } catch (error) {
+      throw new Error(`Error fetching admin wallets: ${error.message}`);
+    }
+  }
+
+  static async updateAdminWallet(currency, address) {
+    try {
+      const adminUser = await User.findOne({ role: 'admin' });
+      if (!adminUser) throw new Error('Admin not found');
+
+      const walletField = `${currency.toLowerCase()}Wallet`;
+      adminUser[walletField] = address;
+      await adminUser.save();
+
+      return {
+        currency,
+        address,
+        message: `${currency} wallet updated successfully`
+      };
+    } catch (error) {
+      throw new Error(`Error updating admin wallet: ${error.message}`);
+    }
+  }
+
+  static async deleteAdminWallet(currency) {
+    try {
+      const adminUser = await User.findOne({ role: 'admin' });
+      if (!adminUser) throw new Error('Admin not found');
+
+      const walletField = `${currency.toLowerCase()}Wallet`;
+      adminUser[walletField] = null;
+      await adminUser.save();
+
+      return {
+        message: `${currency} wallet deleted successfully`
+      };
+    } catch (error) {
+      throw new Error(`Error deleting admin wallet: ${error.message}`);
+    }
+  }
+
+  static async createWallet(walletData) {
+    try {
+      const wallet = new Wallet(walletData);
+      await wallet.save();
+      return wallet;
+    } catch (error) {
+      throw new Error(`Error creating wallet: ${error.message}`);
+    }
+  }
+
+  static async getAllWallets() {
+    try {
+      return await Wallet.find().sort({ createdAt: -1 });
+    } catch (error) {
+      throw new Error(`Error fetching wallets: ${error.message}`);
+    }
+  }
+
+  static async getWalletsByCurrency(currency) {
+    try {
+      return await Wallet.find({ 
+        currency, 
+        isActive: true 
+      });
+    } catch (error) {
+      throw new Error(`Error fetching ${currency} wallets: ${error.message}`);
+    }
+  }
+
+  static async updateWallet(walletId, updateData) {
+    try {
+      const wallet = await Wallet.findByIdAndUpdate(
+        walletId,
+        updateData,
+        { new: true, runValidators: true }
+      );
+      if (!wallet) throw new Error('Wallet not found');
+      return wallet;
+    } catch (error) {
+      throw new Error(`Error updating wallet: ${error.message}`);
+    }
+  }
+
+  static async deleteWallet(walletId) {
+    try {
+      const wallet = await Wallet.findByIdAndDelete(walletId);
+      if (!wallet) throw new Error('Wallet not found');
+      return wallet;
+    } catch (error) {
+      throw new Error(`Error deleting wallet: ${error.message}`);
     }
   }
 }

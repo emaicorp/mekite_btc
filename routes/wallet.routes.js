@@ -60,85 +60,11 @@ const AuthMiddleware = require('../middleware/auth');
  *   name: Wallet
  *   description: Wallet management and transactions
  */
-
 /**
  * @swagger
- * /wallet/balance:
- *   get:
- *     summary: Get user's wallet balance
- *     tags: [Wallet]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: currency
- *         schema:
- *           type: string
- *           enum: [USD, BTC, ETH, USDT]
- *         description: Currency type for balance
- *     responses:
- *       200:
- *         description: Wallet balance retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 balance:
- *                   type: number
- *                 currency:
- *                   type: string
- *                 lastUpdated:
- *                   type: string
- *                   format: date-time
- *       401:
- *         description: Not authorized
- */
-router.get('/balance', AuthMiddleware.authenticate, WalletController.getBalance);
-
-/**
- * @swagger
- * /wallet/update-balance:
- *   put:
- *     summary: Update wallet balance (Admin only)
- *     tags: [Wallet]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - userId
- *               - amount
- *               - type
- *             properties:
- *               userId:
- *                 type: string
- *               amount:
- *                 type: number
- *               type:
- *                 type: string
- *                 enum: [credit, debit]
- *               reason:
- *                 type: string
- *     responses:
- *       200:
- *         description: Balance updated successfully
- *       401:
- *         description: Not authorized
- *       403:
- *         description: Admin access required
- */
-router.put('/update-balance', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, WalletController.updateBalance);
-
-/**
- * @swagger
- * /wallet/withdraw:
+ * /wallet:
  *   post:
- *     summary: Request a withdrawal
+ *     summary: Create new wallet (Admin only)
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -149,137 +75,75 @@ router.put('/update-balance', AuthMiddleware.authenticate, AuthMiddleware.author
  *           schema:
  *             type: object
  *             required:
- *               - amount
  *               - currency
- *               - walletAddress
+ *               - address
  *             properties:
- *               amount:
- *                 type: number
- *                 minimum: 10
  *               currency:
  *                 type: string
- *                 enum: [BTC, ETH, USDT]
- *               walletAddress:
+ *                 enum: [bitcoin, ethereum, usdt]
+ *               address:
+ *                 type: string
+ *               label:
  *                 type: string
  *     responses:
  *       201:
- *         description: Withdrawal request created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *         description: Wallet created successfully
  *       400:
- *         description: Invalid input or insufficient balance
- *       401:
- *         description: Not authorized
- */
-router.post('/withdraw', AuthMiddleware.authenticate, WalletController.requestWithdrawal);
-
-/**
- * @swagger
- * /wallet/fund:
- *   post:
- *     summary: Fund wallet (Admin only)
- *     tags: [Wallet]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - userId
- *               - amount
- *               - currency
- *             properties:
- *               userId:
- *                 type: string
- *               amount:
- *                 type: number
- *               currency:
- *                 type: string
- *                 enum: [USD, BTC, ETH, USDT]
- *               note:
- *                 type: string
- *     responses:
- *       200:
- *         description: Wallet funded successfully
- *       401:
- *         description: Not authorized
+ *         description: Invalid input
  *       403:
  *         description: Admin access required
  */
-router.post('/fund', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, WalletController.fundWallet);
+router.post('/', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, WalletController.createWallet);
 
 /**
  * @swagger
- * /wallet/transactions:
+ * /wallet:
  *   get:
- *     summary: Get wallet transactions history
+ *     summary: Get all wallets 
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all wallets
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/', AuthMiddleware.authenticate,  WalletController.getAllWallets);
+
+/**
+ * @swagger
+ * /wallet/{currency}:
+ *   get:
+ *     summary: Get wallets by currency (Public)
+ *     tags: [Wallet]
+ *     parameters:
+ *       - in: path
+ *         name: currency
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [bitcoin, ethereum, usdt]
+ *     responses:
+ *       200:
+ *         description: List of wallets for specified currency
+ */
+router.get('/:currency', WalletController.getWalletsByCurrency);
+
+/**
+ * @swagger
+ * /wallet/{id}:
+ *   patch:
+ *     summary: Update wallet (Admin only)
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: type
+ *       - in: path
+ *         name: id
+ *         required: true
  *         schema:
  *           type: string
- *           enum: [deposit, withdrawal, investment, referral]
- *         description: Filter by transaction type
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [pending, completed, failed]
- *         description: Filter by transaction status
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 10
- *         description: Number of items per page
- *     responses:
- *       200:
- *         description: Transactions retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 transactions:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Transaction'
- *                 totalCount:
- *                   type: integer
- *                 currentPage:
- *                   type: integer
- *                 totalPages:
- *                   type: integer
- *       401:
- *         description: Not authorized
- */
-router.get('/transactions', AuthMiddleware.authenticate, WalletController.getTransactions);
-
-/**
- * @swagger
- * /wallet/addresses:
- *   put:
- *     summary: Update wallet addresses
- *     tags: [Wallet]
- *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -287,20 +151,44 @@ router.get('/transactions', AuthMiddleware.authenticate, WalletController.getTra
  *           schema:
  *             type: object
  *             properties:
- *               bitcoin:
+ *               address:
  *                 type: string
- *               ethereum:
- *                 type: string
- *               usdt:
+ *               isActive:
+ *                 type: boolean
+ *               label:
  *                 type: string
  *     responses:
  *       200:
- *         description: Wallet addresses updated successfully
- *       400:
- *         description: Invalid addresses
- *       401:
- *         description: Not authorized
+ *         description: Wallet updated successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Wallet not found
  */
-router.put('/addresses', AuthMiddleware.authenticate, WalletController.updateAddresses);
+router.patch('/:id', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, WalletController.updateWallet);
+
+/**
+ * @swagger
+ * /wallet/{id}:
+ *   delete:
+ *     summary: Delete wallet (Admin only)
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Wallet deleted successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Wallet not found
+ */
+router.delete('/:id', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, WalletController.deleteWallet);
 
 module.exports = router; 

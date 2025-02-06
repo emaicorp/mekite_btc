@@ -4,6 +4,81 @@ const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 
 class WalletController {
+  static async createWallet(req, res) {
+    try {
+      const wallet = await WalletService.createWallet(req.body);
+      res.status(201).json({
+        success: true,
+        data: wallet
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async getAllWallets(req, res) {
+    try {
+      const wallets = await WalletService.getAllWallets();
+      res.json({
+        success: true,
+        data: wallets
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async getWalletsByCurrency(req, res) {
+    try {
+      const wallets = await WalletService.getWalletsByCurrency(req.params.currency);
+      res.json({
+        success: true,
+        data: wallets
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async updateWallet(req, res) {
+    try {
+      const wallet = await WalletService.updateWallet(req.params.id, req.body);
+      res.json({
+        success: true,
+        data: wallet
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async deleteWallet(req, res) {
+    try {
+      await WalletService.deleteWallet(req.params.id);
+      res.json({
+        success: true,
+        message: 'Wallet deleted successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
   static async updateBalance(req, res) {
     try {
       const { walletAddress, currency, balanceChange, isWithdrawal } = req.body;
@@ -183,6 +258,53 @@ class WalletController {
       res.json({
         success: true,
         data: wallet
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async getAdminWallets(req, res) {
+    try {
+      const wallets = await WalletService.getAdminWallets();
+      res.json({
+        success: true,
+        data: wallets
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async updateAdminWallet(req, res) {
+    try {
+      const { currency, address } = req.body;
+      const result = await WalletService.updateAdminWallet(currency, address);
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  static async deleteAdminWallet(req, res) {
+    try {
+      const { currency } = req.query;
+      const result = await WalletService.deleteAdminWallet(currency);
+      res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
       res.status(400).json({
