@@ -75,8 +75,24 @@ class InvestmentController {
 
       const investment = await InvestmentService.updateStatus(investmentId, status);
       
-      // If investment is approved, start profit calculation
+      // If investment is approved, update user's active deposit
       if (status === 'approved') {
+        const user = await User.findById(investment.userId);
+        if (!user) {
+          throw new Error('User not found');
+        }
+
+        console.log(`Processing approval for investment ${investmentId}`);
+        console.log(`Current active deposit for user ${user.username}: $${user.activeDeposit}`);
+        
+        // Update active deposit
+        user.activeDeposit = (user.activeDeposit || 0) + investment.amount;
+        await user.save();
+        
+        console.log(`Updated active deposit to: $${user.activeDeposit}`);
+        console.log(`✅ Investment approved and active deposit updated`);
+
+        // Initiate profit calculation if needed
         await InvestmentService.initiateProfitCalculation(investment);
       }
 

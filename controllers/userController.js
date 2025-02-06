@@ -47,7 +47,7 @@ class UserController {
           },
           {
             path: 'investments',
-            select: 'amount status planId createdAt'
+            select: 'amount status planId createdAt selectedPackage '
           },
           {
             path: 'transactions',

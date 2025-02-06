@@ -11,6 +11,7 @@ const cryptoRoutes = require('./crypto.routes');
 const investmentPlanRoutes = require('./investmentPlan.routes');
 const usersRoutes = require('./userRoutes');
 const transactionRoutes = require('./transaction.routes');
+const profitRoutes = require('./profit.routes');
 
 router.use('/auth', authRoutes);
 router.use('/investments', investmentRoutes);
@@ -22,5 +23,6 @@ router.use('/crypto', cryptoRoutes);
 router.use('/investment-plans', investmentPlanRoutes);
 router.use('/users', usersRoutes);
 router.use('/transactions', transactionRoutes);
+router.use('/profit', profitRoutes);
 
 module.exports = router; 
