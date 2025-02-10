@@ -12,18 +12,18 @@ class AuthController {
   static async register(req, res) {
     try {
       // Log raw request body for debugging
-      console.log('Raw request body:', req.body);
+      console.log('Raw request body:', req.body.body);
 
       // Create userData directly from req.body with validation
       const userData = {
-        username: req.body.username,
-        email: req.body.email,
-        password: req.body.password,
-        fullName: req.body.fullName || req.body.fullname, // Handle different casing
-        referralCode: req.body.referralCode,
-        recoveryQuestion: req.body.recoveryQuestion,
-        recoveryAnswer: req.body.recoveryAnswer,
-        agreedToTerms: req.body.agreedToTerms
+        username: req.body.body.username,
+        email: req.body.body.email,
+        password: req.body.body.password,
+        fullName: req.body.body.fullName || req.body.body.fullname, // Handle different casing
+        referralCode: req.body.body.referralCode,
+        recoveryQuestion: req.body.body.recoveryQuestion,
+        recoveryAnswer: req.body.body.recoveryAnswer,
+        agreedToTerms: req.body.body.agreedToTerms
       };
 
       console.log("Processed userData:", userData);
