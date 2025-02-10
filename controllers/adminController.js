@@ -15,20 +15,32 @@ class AdminController {
 
   static async manageUser(req, res) {
     try {
-      const { userId, action, reason } = req.body;
+      if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'No update data provided' 
+        });
+      }
 
-      const result = await AdminService.manageUserAccount(userId, action, reason);
-
+      const user = await AdminService.manageUserAccount(
+        req.params.userId, 
+        req.body
+      );
+      const {username, email, status, role, password} = req.body
       // Send notification email to user
-      await EmailService.sendAccountStatusNotification(result.user.email, {
-        action,
-        reason
-      });
+      await EmailService.sendAccountStatusNotification(user.email,
+        username,
+        email,
+        status,
+        role,
+        password
+        
+      );
 
       res.status(200).json({
         success: true,
-        message: `User ${action} successfully`,
-        user: result.user
+        message: `User Data updated  successfully`,
+        user: user
       });
     } catch (error) {
       console.error('Manage user error:', error);

@@ -14,7 +14,7 @@ const InvestmentSchema = new Schema({
   paymentMethod: {
     type: String,
     required: true,
-    enum: ['bitcoin', 'ethereum', 'usdt']
+    enum: ['bitcoin', 'ethereum', 'usdt','balance']
   },
   amount: {
     type: Number,

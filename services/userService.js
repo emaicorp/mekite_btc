@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 class UserService {
   static async createUser(userData) {
     try {
+      console.log(userData)
       const user = new User(userData);
       return await user.save();
     } catch (error) {

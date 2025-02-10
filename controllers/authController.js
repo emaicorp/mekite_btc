@@ -11,27 +11,33 @@ const crypto = require('crypto');
 class AuthController {
   static async register(req, res) {
     try {
-      const { 
-        username, 
-        email, 
-        password, 
-        fullName, 
-        referralCode,
-        recoveryQuestion,
-        recoveryAnswer,
-        agreedToTerms
-      } = req.body;
+      // Log raw request body for debugging
+      console.log('Raw request body:', req.body);
 
-      // Validate terms agreement
-      if (!agreedToTerms) {
+      // Create userData directly from req.body with validation
+      const userData = {
+        username: req.body.username,
+        email: req.body.email,
+        password: req.body.password,
+        fullName: req.body.fullName || req.body.fullname, // Handle different casing
+        referralCode: req.body.referralCode,
+        recoveryQuestion: req.body.recoveryQuestion,
+        recoveryAnswer: req.body.recoveryAnswer,
+        agreedToTerms: req.body.agreedToTerms
+      };
+
+      console.log("Processed userData:", userData);
+
+      // Validate required fields
+      if (!userData.username || !userData.email || !userData.password) {
         return res.status(400).json({
           success: false,
-          message: 'You must agree to the terms and conditions'
+          message: 'Username, email, and password are required'
         });
       }
 
       // Check if user already exists using UserService
-      const existingUser = await UserService.findByUsernameOrEmail(username, email);
+      const existingUser = await UserService.findByUsernameOrEmail(userData.username, userData.email);
       if (existingUser) {
         return res.status(400).json({
           success: false,
@@ -41,27 +47,19 @@ class AuthController {
 
       // Generate unique referral code for new user
       const newReferralCode = crypto.randomBytes(4).toString('hex');
+      userData.referralCode = newReferralCode;
 
       // Create new user using UserService
-      const userData = {
-        username,
-        email,
-        password,
-        fullName,
-        referralCode: newReferralCode,
-        recoveryQuestion,
-        recoveryAnswer,
-        agreedToTerms
-      };
-
       const user = await UserService.createUser(userData);
+      console.log("Created user:", user);
 
+      await EmailService.sendWelcomeEmail(user)
       // Create wallet for new user
       await Wallet.createForUser(user._id);
 
       // Process referral if referral code was provided
-      if (referralCode) {
-        const referrer = await UserService.findByReferralCode(referralCode);
+      if (userData.referralCode) {
+        const referrer = await UserService.findByReferralCode(userData.referralCode);
         
         if (referrer) {
           // Create referral relationship

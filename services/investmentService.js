@@ -1,24 +1,47 @@
 const User = require('../models/User');
 const Investment = require('../models/Investment');
 const { calculateProfit } = require('../utils/investmentUtils');
+const InvestmentPlan = require('../models/InvestmentPlan')
+const emailService = require('../services/emailService')
 
 class InvestmentService {
   static async validateInvestment(selectedPackage, paymentMethod, amount) {
     try {
       // Add your investment validation logic here
-      const minAmount = 100; // Example minimum amount
-      const maxAmount = 1000000; // Example maximum amount
+      const selectedPackages = await InvestmentPlan.findOne({name : selectedPackage})
+      console.log(selectedPackages)
 
-      if (amount < minAmount || amount > maxAmount) {
+      if (amount < selectedPackages.minAmount || amount > selectedPackages.maxAmount) {
         return {
           isValid: false,
-          message: `Investment amount must be between ${minAmount} and ${maxAmount}`
+          message: `Investment amount must be between ${selectedPackages.minAmount} and ${selectedPackages.maxAmount}`
         };
       }
 
       return { isValid: true };
     } catch (error) {
       throw new Error(`Investment validation error: ${error.message}`);
+    }
+  }
+
+  static async deducBalance(userId, amount) {
+    try {
+      const user = await User.findById(userId).select('activeDeposit');
+      if (!user) throw new Error('User not found');
+      
+      if (user.activeDeposit < amount) {
+        throw new Error('Insufficient balance');
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: { activeDeposit: user.activeDeposit - amount } },
+        { new: true }
+      );
+
+      return updatedUser;
+    } catch (error) {
+      throw new Error(`Error deducting balance: ${error.message}`);
     }
   }
 

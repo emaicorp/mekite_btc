@@ -10,32 +10,45 @@ class AdminService {
     }
   }
 
-  static async manageUserAccount(userId, action, reason) {
+  static async manageUserAccount(userId, updates = {}) {
     try {
+      // Add validation for updates parameter
+      if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+        throw new Error('No updates provided');
+      }
+
+      const allowedUpdates = [
+        'username', 'email', 'role', 'status','password'
+      ];
+      
+      const updateKeys = Object.keys(updates);
+      const isValidUpdate = updateKeys.every(key => allowedUpdates.includes(key));
+      
+      if (!isValidUpdate) {
+        throw new Error('Invalid update fields');
+      }
+
       const user = await User.findById(userId);
       if (!user) throw new Error('User not found');
 
-      switch (action) {
-        case 'suspend':
-          user.isSuspended = true;
-          break;
-        case 'unsuspend':
-          user.isSuspended = false;
-          break;
-        case 'disable':
-          user.isDisabled = true;
-          break;
-        case 'enable':
-          user.isDisabled = false;
-          break;
-        default:
-          throw new Error('Invalid action');
+      // Handle email uniqueness check
+      if (updates.email && updates.email !== user.email) {
+        const existingUser = await User.findOne({ email: updates.email });
+        if (existingUser) {
+          throw new Error('Email already exists');
+        }
       }
 
+      // Apply updates
+      updateKeys.forEach(key => {
+        user[key] = updates[key];
+      });
+
       await user.save();
-      return { user, action, reason };
+    
+      return user;
     } catch (error) {
-      throw new Error(`Error managing user account: ${error.message}`);
+      throw new Error(`Error updating user account: ${error.message}`);
     }
   }
 

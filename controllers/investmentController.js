@@ -9,7 +9,11 @@ class InvestmentController {
     try {
       const { selectedPackage, paymentMethod, amount } = req.body;
       const userId = req.user.id;
+      const user = await User.findById(userId)
 
+      if(paymentMethod == 'balance'){
+        await InvestmentService.deducBalance(userId, amount)
+      }
       // Validate investment data
       const validationResult = await InvestmentService.validateInvestment(
         selectedPackage,
@@ -30,7 +34,7 @@ class InvestmentController {
       );
 
       // Send confirmation email
-      await EmailService.sendInvestmentConfirmation(req.user.email, investment);
+      await EmailService.sendInvestmentConfirmation(user, investment);
 
       res.status(201).json({
         success: true,
@@ -93,9 +97,9 @@ class InvestmentController {
         console.log(`✅ Investment approved and active deposit updated`);
 
         // Initiate profit calculation if needed
-        await InvestmentService.initiateProfitCalculation(investment);
+        // await InvestmentService.initiateProfitCalculation(investment);
+        EmailService.sendInvestmentApproval(user,investment,status)
       }
-
       res.status(200).json({
         success: true,
         message: 'Investment status updated successfully',

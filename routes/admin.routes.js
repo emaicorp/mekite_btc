@@ -293,4 +293,63 @@ router.put('/fund-total-earnings', AuthMiddleware.authenticate, AuthMiddleware.a
  */
 router.post('/deduct-deposit', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, AdminController.deductDeposit);
 
+/**
+ * @swagger
+ * /admin/users/{userId}:
+ *   patch:
+ *     summary: Update user account details (Admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [user, admin]
+ *               isSuspended:
+ *                 type: boolean
+ *               isDisabled:
+ *                 type: boolean
+ *               bitcoinAvailable:
+ *                 type: number
+ *               ethereumAvailable:
+ *                 type: number
+ *               usdtAvailable:
+ *                 type: number
+ *               activeDeposit:
+ *                 type: number
+ *               totalEarnings:
+ *                 type: number
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Invalid update fields
+ *       404:
+ *         description: User not found
+ */
+router.patch('/users/:userId', 
+  AuthMiddleware.authenticate, 
+  AuthMiddleware.authorizeAdmin, 
+  AdminController.manageUser
+);
+
 module.exports = router; 
