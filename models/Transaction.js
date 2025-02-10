@@ -29,7 +29,7 @@ const TransactionSchema = new Schema({
   },
   walletAddress: {
     type: String,
-    required: true
+    required: false
   },
   transactionHash: {
     type: String

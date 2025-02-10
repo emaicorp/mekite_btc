@@ -55,7 +55,7 @@ class AuthController {
 
       await EmailService.sendWelcomeEmail(user)
       // Create wallet for new user
-      await Wallet.createForUser(user._id);
+      // await Wallet.createForUser(user._id);
 
       // Process referral if referral code was provided
       if (userData.referralCode) {
