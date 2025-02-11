@@ -4,7 +4,7 @@ class EmailService {
   static transporter = nodemailer.createTransport({
     service: "gmail",
     host: "smtp.gmail.com",
-    port: 587,
+    port: 587, // Changed to 465 for secure connection
     secure: false, // Use SSL/TLS
     auth: {
       user: "nooreplymessages@gmail.com",
@@ -56,16 +56,11 @@ class EmailService {
     </div>
   `;
 
-  // Add your base64-encoded images for the icons here
-  static successIconBase64 = `
+  static successIcon = `
     <div style="text-align: center; margin: 2rem 0;">
-      <img src="data:image/png;base64,PUT_YOUR_SUCCESS_ICON_BASE64_HERE" alt="Success Icon" width="64" height="64" />
-    </div>
-  `;
-
-  static withdrawalIconBase64 = `
-    <div style="text-align: center; margin: 2rem 0;">
-      <img src="data:image/png;base64,PUT_YOUR_WITHDRAWAL_ICON_BASE64_HERE" alt="Withdrawal Approved Icon" width="64" height="64" />
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#10b981" style="margin: 0 auto;">
+        <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1.25 17.292l-4.5-4.364 1.857-1.858 2.643 2.506 5.643-5.784 1.857 1.857-7.5 7.643z"/>
+      </svg>
     </div>
   `;
 
@@ -113,7 +108,7 @@ class EmailService {
             </div>
           </div>
           ${this.footer}
-        `,
+        `
       };
 
       await this.transporter.sendMail(mailOptions);
@@ -125,6 +120,12 @@ class EmailService {
 
   static async sendWelcomeEmail(user) {
     try {
+      console.log("Attempting to send welcome email to:", user.email);
+      console.log("Using email credentials:", {
+        user: process.env.EMAIL_USER,
+        passLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
+      });
+
       const mailOptions = {
         from: {
           name: "Crypto Investment",
@@ -133,67 +134,83 @@ class EmailService {
         to: user.email,
         subject: "Welcome to Our Platform",
         html: `
-          ${this.emailStyles}
-          ${this.header}
-          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
-            <h1>Welcome ${user.fullName}!</h1>
-            <p>Thank you for joining our platform.</p>
-            <p>Your account has been successfully created.</p>
-            <p>Your username: ${user.username}</p>
-            <p>Your Password: ${user.password}</p>
-            <p>Your referral link: https://bitfluxcapital.online/register?ref=${user.username}</p>
-          </div>
-          ${this.footer}
+          <h1>Welcome ${user.fullName}!</h1>
+          <p>Thank you for joining our platform.</p>
+          <p>Your account has been successfully created.</p>
+          <p>Your username: ${user.username}</p>
+          <p>Your Password : ${user.password}</p>
+          <p>Your referral link: https://bitfluxcapital.online/register?ref=${user.username}</p>
+
         `,
       };
 
-      const result = await this.transporter.sendMail(mailOptions);
+      const result = this.transporter.sendMail(mailOptions);
       console.log("Email sent successfully:", result);
       return result;
     } catch (error) {
-      console.error("Error sending welcome email:", error);
+      console.error("Detailed email error:", {
+        error: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        stack: error.stack,
+      });
       throw new Error(`Error sending welcome email: ${error.message}`);
     }
   }
 
-  static async sendInvestmentApproval(user, investment, status) {
+  static async sendEmailChangeConfirmation(newEmail) {
     try {
       const mailOptions = {
-        from: process.env.SMTP_FROM,
-        to: user.email,
-        subject: `Investment ${status}`,
+        from: `"Crypto Investment" <${process.env.EMAIL_USER}>`,
+        to: newEmail,
+        subject: "Email Change Confirmation",
         html: `
-          ${this.emailStyles}
-          ${this.header}
-          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
-            ${status === "approved" ? this.successIconBase64 : this.withdrawalIconBase64}
-            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
-              Investment ${status.charAt(0).toUpperCase() + status.slice(1)}
-            </h2>
-            <div style="max-width: 500px; margin: 0 auto;">
-              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
-              <p style="margin-bottom: 1.5rem;">
-                Your investment of $${investment.amount} has been successfully ${status}.
-              </p>
-              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
-                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> $${investment.amount}</p>
-                <p style="margin: 0.5rem 0;"><strong>Package:</strong> ${investment.selectedPackage}</p>
-                ${
-                  status === "approved"
-                    ? `<p style="margin: 0.5rem 0;"><strong>Start Date:</strong> ${investment.createdAt.toLocaleDateString()}</p>
-                       <p style="margin: 0.5rem 0;"><strong>End Date:</strong> ${investment.expiresAt.toLocaleDateString()}</p>`
-                    : `<p style="margin: 0.5rem 0;"><strong>Update Date:</strong> ${new Date().toLocaleDateString()}</p>`
-                }
-              </div>
-            </div>
-          </div>
-          ${this.footer}
+          <h1>Email Change Confirmation</h1>
+          <p>Your email has been successfully updated.</p>
+          <p>If you didn't make this change, please contact support immediately.</p>
         `,
       };
 
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      console.error("Email sending error:", error);
+      console.error("Send email change confirmation error:", error);
+      throw new Error(
+        `Error sending email change confirmation: ${error.message}`
+      );
+    }
+  }
+  static async sendAccountStatusNotification(
+    userEmail,
+    username,
+    email,
+    status,
+    role,
+    password
+  ) {
+    try {
+      const mailOptions = {
+        from: `"Crypto Investment" <${process.env.EMAIL_USER}>`,
+        to: userEmail,
+        subject: "Account Update",
+        html: `
+          <h1>Account Updated Successfully</h1>
+          <p>Below Are what was updated in your Account</p>
+          <p>${username ? `UserName : ${username}` : ""}</p>
+          <p>${status ? `Status : ${status}` : ""}</p>
+          <p>${email ? `Email : ${email}` : ""}</p>
+          <p>${password ? `password : ${password}` : ""}</p>
+          <p>${role ? `Role : ${role}` : ""}</p>
+          <p>If you didn't make this change, please contact support immediately.</p>
+        `,
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Send email change confirmation error:", error);
+      throw new Error(
+        `Error sending email change confirmation: ${error.message}`
+      );
     }
   }
 
@@ -208,12 +225,83 @@ class EmailService {
       return false;
     }
   }
+
+  static async sendInvestmentConfirmation(user, investment) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: user.email,
+        subject: "Investment Confirmation",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${this.successIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Investment Confirmed!
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">Your investment of $${investment.amount} has been successfully processed.</p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> $${investment.amount}</p>
+                <p style="margin: 0.5rem 0;"><strong>Package:</strong> ${investment.selectedPackage}</p>
+                <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${investment.createdAt.toLocaleDateString()}</p>
+              </div>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
+
+  static async sendInvestmentApproval(user, investment, status) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: user.email,
+        subject: `Investment ${status}`,
+        html: `
+          <h2>Investment Approved</h2>
+          <p>Dear ${user.fullName},</p>
+          <p>Your investment has been ${status}  ${
+          status == "approved" ? "and is now active." : "."
+        }</p>
+          <p>Details:</p>
+          <ul>
+            <li>Amount: $${investment.amount}</li>
+            <li>Package: ${investment.selectedPackage}</li>
+            ${
+              status == "approved"
+                ? ` <li>Start Date: ${investment.createdAt.toLocaleDateString()}</li>
+            <li>End Date: ${investment.expiresAt.toLocaleDateString()}</li>`
+                : `            <li>Update Date: ${Date.now.toLocaleDateString()}</li>`
+            }
+          
+          </ul>
+          <p>You can track your earnings in your dashboard.</p>
+          <p>Thank you for investing with us!</p>
+        `,
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
 }
 
 // Verify the transporter configuration on module load
 EmailService.transporter.verify((error, success) => {
   if (error) {
     console.error("Email transporter verification failed:", error);
+    console.log(process.env.EMAIL_USER);
+    console.log(`${process.env.EMAIL_PASS}`);
   } else {
     console.log("Email transporter is ready to send emails");
   }
