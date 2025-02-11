@@ -48,7 +48,10 @@ class InvestmentService {
   static async createInvestment(userId, selectedPackage, paymentMethod, amount) {
     try {
       const user = await User.findById(userId).select('investments');
+      const selectedPackages = await InvestmentPlan.findOne({name : selectedPackage})
+
       if (!user) throw new Error('User not found');
+      if (!selectedPackages) throw new Error('Package Not Found')
 
       const investment = new Investment({
         userId,
@@ -57,7 +60,7 @@ class InvestmentService {
         amount,
         status: 'pending',
         createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+        expiresAt: selectedPackages.duration
       });
 
       await investment.save();
