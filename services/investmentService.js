@@ -52,15 +52,17 @@ class InvestmentService {
 
       if (!user) throw new Error('User not found');
       if (!selectedPackages) throw new Error('Package Not Found')
-
+        const createdAt = new Date();
+const expiresAt = new Date(createdAt);
+expiresAt.setDate(createdAt.getDate() + selectedPackages.duration);
       const investment = new Investment({
         userId,
         selectedPackage,
         paymentMethod,
         amount,
         status: 'pending',
-        createdAt: new Date(),
-        expiresAt: selectedPackages.duration
+        createdAt: createdAt,
+        expiresAt: expiresAt 
       });
 
       await investment.save();
