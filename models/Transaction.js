@@ -9,12 +9,12 @@ const TransactionSchema = new Schema({
   },
   type: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'investment', 'referral', 'profit'],
+    enum: ['deposit', 'withdrawal', 'investment', 'referral', 'profit', 'referral_commission'],
     required: true
   },
   currency: {
     type: String,
-    enum: ['bitcoin', 'ethereum', 'usdt'],
+    enum: ['bitcoin', 'ethereum', 'usdt','balance'],
     required: true
   },
   amount: {

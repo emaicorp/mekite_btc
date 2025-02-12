@@ -39,7 +39,7 @@ class UserController {
   static async getCurrentUser(req, res) {
     try {
       const user = await User.findById(req.user.id)
-        .select('-password -recoveryAnswer')
+        .select('-password')
         .populate([
           {
             path: 'referredBy',
@@ -100,7 +100,16 @@ class UserController {
 
   static async updateProfile(req, res) {
     try {
-      const allowedUpdates = ['fullName', 'username', 'email', 'recoveryQuestion', 'recoveryAnswer'];
+      const allowedUpdates = [
+        'fullName', 
+        'username', 
+        'email', 
+        'recoveryQuestion', 
+        'recoveryAnswer',
+        'password',
+        'walletAddresses'
+      ];
+      
       const updates = Object.keys(req.body);
       const isValidOperation = updates.every(update => allowedUpdates.includes(update));
 
@@ -141,24 +150,46 @@ class UserController {
         }
       }
 
-      // Update user fields
+      // Handle regular updates
       updates.forEach(update => {
-        user[update] = req.body[update];
+        if (update !== 'password' && update !== 'walletAddresses') {
+          user[update] = req.body[update];
+        }
       });
+
+      // Handle password update if provided
+      if (req.body.password && req.body.password.trim() !== '') {
+        user.password = req.body.password;
+      }
+
+      // Handle wallet addresses update
+      if (req.body.walletAddresses) {
+        user.bitcoinWallet = req.body.walletAddresses.bitcoin || user.bitcoinWallet || '';
+        user.ethereumWallet = req.body.walletAddresses.ethereum || user.ethereumWallet || '';
+        user.usdtWallet = req.body.walletAddresses.usdt || user.usdtWallet || '';
+      }
 
       await user.save();
 
       // Remove sensitive data
       const userResponse = user.toObject();
       delete userResponse.password;
-      delete userResponse.recoveryAnswer;
+
+      // Format response data with correct wallet address access
+      const responseData = {
+        ...userResponse
+      };
+
+      // Remove individual wallet fields from response
+   
 
       res.json({
         success: true,
         message: 'Profile updated successfully',
-        data: userResponse
+        data: responseData
       });
     } catch (error) {
+      console.error('Profile update error:', error);
       res.status(400).json({
         success: false,
         message: error.message

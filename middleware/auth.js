@@ -10,13 +10,13 @@ class AuthMiddleware {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log(decoded);
+      // console.log(decoded);
       const user = await User.findById(decoded.id);
       
       if (!user) {
         return res.status(401).json({ message: 'User not found' });
       }
-      console.log(user);
+      // console.log(user);
 
       if (user.isDisabled || user.isSuspended) {
         return res.status(403).json({ message: 'Account is disabled or suspended' });

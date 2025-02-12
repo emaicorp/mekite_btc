@@ -3,6 +3,8 @@ const UserService = require('../services/userService');
 const EmailService = require('../services/emailService');
 const Investment = require('../models/Investment');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+const Referral = require('../models/Referral');
 
 class InvestmentController {
   static async createInvestment(req, res) {
@@ -11,9 +13,7 @@ class InvestmentController {
       const userId = req.user.id;
       const user = await User.findById(userId)
 
-      if(paymentMethod == 'balance'){
-        await InvestmentService.deducBalance(userId, amount)
-      }
+     
       // Validate investment data
       const validationResult = await InvestmentService.validateInvestment(
         selectedPackage,
@@ -79,7 +79,7 @@ class InvestmentController {
 
       const investment = await InvestmentService.updateStatus(investmentId, status);
       
-      // If investment is approved, update user's active deposit
+      // If investment is approved
       if (status === 'approved') {
         const user = await User.findById(investment.userId);
         if (!user) {
@@ -91,15 +91,76 @@ class InvestmentController {
         
         // Update active deposit
         user.activeDeposit = (user.activeDeposit || 0) + investment.amount;
-        await user.save();
+
+         if(investment.paymentMethod == 'balance'){
+        await InvestmentService.deducBalance(user._id, investment.amount)
+      }else{
+        user.availableBalance = (user.availableBalance || 0) + investment.amount;
         
+      }
+      await user.save();
         console.log(`Updated active deposit to: $${user.activeDeposit}`);
         console.log(`✅ Investment approved and active deposit updated`);
 
-        // Initiate profit calculation if needed
-        // await InvestmentService.initiateProfitCalculation(investment);
-        EmailService.sendInvestmentApproval(user,investment,status)
+        // Handle referral commission
+        if (user.referredBy) {
+          try {
+            // Find referrer
+            const referrer = await User.findById(user.referredBy);
+            if (referrer) {
+              // Calculate 10% commission
+              const commissionAmount = investment.amount * 0.10;
+              console.log(`Calculating referral commission: $${commissionAmount} for referrer ${referrer.username}`);
+
+              // Update referrer's available balance
+              referrer.availableBalance = (referrer.availableBalance || 0) + commissionAmount;
+              await referrer.save();
+
+              // Update referral record with commission
+              await Referral.findOneAndUpdate(
+                { 
+                  referrerId: referrer._id, 
+                  referredId: user._id 
+                },
+                { 
+                  $inc: { commission: commissionAmount },
+                  status: 'active'  // Update status to active since they made an investment
+                },
+                { new: true }
+              );
+
+              // Create commission transaction
+              await Transaction.create({
+                userId: referrer._id,
+                type: 'referral_commission',
+                amount: commissionAmount,
+                status: 'completed',
+                description: `Referral commission from ${user.username}'s investment of $${investment.amount}`,
+                currency: investment.paymentMethod
+              });
+
+              // Send email to referrer
+              await EmailService.sendReferralCommissionNotification(
+                referrer,
+                {
+                  amount: commissionAmount,
+                  referredUser: user.username,
+                  investmentAmount: investment.amount
+                }
+              );
+
+              console.log(`✅ Referral commission processed and notification sent`);
+            }
+          } catch (error) {
+            console.error('Error processing referral commission:', error);
+            // Don't throw error to prevent blocking the main approval process
+          }
+        }
+
+        // Send investment approval email
+        await EmailService.sendInvestmentApproval(user, investment, status);
       }
+
       res.status(200).json({
         success: true,
         message: 'Investment status updated successfully',

@@ -294,6 +294,210 @@ class EmailService {
       console.error("Email sending error:", error);
     }
   }
+
+  static async sendReferralCommissionNotification(referrer, commissionData) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: referrer.email,
+        subject: "Referral Commission Received",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${this.successIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Referral Commission Received!
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${referrer.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                You have received a referral commission for your referred user's investment.
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Commission Amount:</strong> $${commissionData.amount}</p>
+                <p style="margin: 0.5rem 0;"><strong>Referred User:</strong> ${commissionData.referredUser}</p>
+                <p style="margin: 0.5rem 0;"><strong>Investment Amount:</strong> $${commissionData.investmentAmount}</p>
+                <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+              <p style="margin-top: 1.5rem;">
+                The commission has been added to your available balance.
+              </p>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Referral commission email sent to ${referrer.email}`);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
+
+  static async sendReferralRegistrationNotification(referrer, data) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: referrer.email,
+        subject: "New Referral Registration",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${this.successIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              New Referral Registered!
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${referrer.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                A new user has registered using your referral code!
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Username:</strong> ${data.referredUser.username}</p>
+                <p style="margin: 0.5rem 0;"><strong>Full Name:</strong> ${data.referredUser.fullName}</p>
+                <p style="margin: 0.5rem 0;"><strong>Email:</strong> ${data.referredUser.email}</p>
+                <p style="margin: 0.5rem 0;"><strong>Registration Date:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+              <p style="margin-top: 1.5rem; color: #059669; font-weight: 600;">
+                You will receive a 10% commission on all investments made by this user!
+              </p>
+              <div style="margin-top: 1rem; padding: 1rem; background: #ecfdf5; border-radius: 8px; border-left: 4px solid #059669;">
+                <p style="margin: 0; color: #065f46;">
+                  Example: If they invest $1,000, you'll receive $100 as commission.
+                </p>
+              </div>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Referral registration notification sent to ${referrer.email}`);
+    } catch (error) {
+      console.error("Email sending error:", error);
+      // Don't throw error to prevent registration process from failing
+    }
+  }
+
+  static async sendWithdrawalRequestNotification(user, withdrawal) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: user.email,
+        subject: "Withdrawal Request Received",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${this.successIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Withdrawal Request Received
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                Your withdrawal request has been received and is being processed.
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> ${withdrawal.amount} ${withdrawal.currency}</p>
+                <p style="margin: 0.5rem 0;"><strong>Wallet:</strong> ${withdrawal.walletAddress}</p>
+                <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+              <p style="margin-top: 1.5rem;">
+                We will process your request as soon as possible.
+              </p>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
+
+  static async sendWithdrawalApprovalNotification(user, withdrawal) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: user.email,
+        subject: "Withdrawal Request Approved",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${this.successIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Withdrawal Approved!
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                Your withdrawal request has been approved and processed.
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> ${withdrawal.amount} ${withdrawal.currency}</p>
+                <p style="margin: 0.5rem 0;"><strong>Wallet:</strong> ${withdrawal.walletAddress}</p>
+                <p style="margin: 0.5rem 0;"><strong>Status:</strong> Approved</p>
+                <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
+
+  static async sendWithdrawalRejectionNotification(user, withdrawal) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: user.email,
+        subject: "Withdrawal Request Rejected",
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Withdrawal Request Rejected
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                Your withdrawal request has been rejected.
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> ${withdrawal.amount} ${withdrawal.currency}</p>
+                <p style="margin: 0.5rem 0;"><strong>Wallet:</strong> ${withdrawal.walletAddress}</p>
+                <p style="margin: 0.5rem 0;"><strong>Status:</strong> Rejected</p>
+                <p style="margin: 0.5rem 0;"><strong>Reason:</strong> ${withdrawal.remarks || 'No reason provided'}</p>
+                <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+              <p style="margin-top: 1.5rem;">
+                If you have any questions, please contact support.
+              </p>
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error("Email sending error:", error);
+    }
+  }
 }
 
 // Verify the transporter configuration on module load

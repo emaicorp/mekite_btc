@@ -12,6 +12,7 @@ const investmentPlanRoutes = require('./investmentPlan.routes');
 const usersRoutes = require('./userRoutes');
 const transactionRoutes = require('./transaction.routes');
 const profitRoutes = require('./profit.routes');
+const withdrawalRoutes = require('./withdrawalRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/investments', investmentRoutes);
@@ -24,5 +25,6 @@ router.use('/investment-plans', investmentPlanRoutes);
 router.use('/users', usersRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/profit', profitRoutes);
+router.use('/withdrawals', withdrawalRoutes);
 
 module.exports = router; 

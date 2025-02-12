@@ -12,18 +12,18 @@ class AuthController {
   static async register(req, res) {
     try {
       // Log raw request body for debugging
-      console.log('Raw request body:', req.body.body);
+      console.log('Raw request body:', req.body);
 
       // Create userData directly from req.body with validation
       const userData = {
-        username: req.body.body.username,
-        email: req.body.body.email,
-        password: req.body.body.password,
-        fullName: req.body.body.fullName || req.body.body.fullname, // Handle different casing
-        referralCode: req.body.body.referralCode,
-        recoveryQuestion: req.body.body.recoveryQuestion,
-        recoveryAnswer: req.body.body.recoveryAnswer,
-        agreedToTerms: req.body.body.agreedToTerms
+        username: req.body.username,
+        email: req.body.email,
+        password: req.body.password,
+        fullName: req.body.fullName || req.body.fullname, // Handle different casing
+        referralcode: req.body.referralcode || req.body.referredBy,
+        recoveryQuestion: req.body.recoveryQuestion,
+        recoveryAnswer: req.body.recoveryAnswer,
+        agreedToTerms: req.body.agreedToTerms
       };
 
       console.log("Processed userData:", userData);
@@ -47,7 +47,7 @@ class AuthController {
 
       // Generate unique referral code for new user
       const newReferralCode = crypto.randomBytes(4).toString('hex');
-      userData.referralCode = newReferralCode;
+      // userData.referralcode = userData.username;
 
       // Create new user using UserService
       const user = await UserService.createUser(userData);
@@ -58,9 +58,10 @@ class AuthController {
       // await Wallet.createForUser(user._id);
 
       // Process referral if referral code was provided
-      if (userData.referralCode) {
-        const referrer = await UserService.findByReferralCode(userData.referralCode);
-        
+      if (userData.referralcode) {
+        console.log("referral code",userData.referralcode)
+        const referrer = await UserService.findByUsername(userData.referralcode);
+        console.log("referrer", referrer)
         if (referrer) {
           // Create referral relationship
           await Referral.create({
@@ -72,6 +73,18 @@ class AuthController {
 
           // Update user's referrer
           await UserService.updateUser(user._id, { referredBy: referrer._id });
+
+          // Send referral notification email
+          await EmailService.sendReferralRegistrationNotification(
+            referrer,
+            {
+              referredUser: {
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName
+              }
+            }
+          );
 
           // Process upper level referrals
           await AuthController.processUpperLevelReferrals(user._id, referrer._id);

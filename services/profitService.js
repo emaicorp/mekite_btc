@@ -8,40 +8,87 @@ class ProfitService {
     try {
       console.log('\n=== Starting Daily Profit Distribution ===\n');
       
-      // Get all users
-      const users = await User.find({}).select('_id username totalEarnings walletAddress');
+      const users = await User.find({}).select('_id username totalEarnings walletAddress availableBalance activeDeposit');
       console.log(`Found ${users.length} total users`);
 
       const profitResults = {
         successful: 0,
         failed: 0,
         totalProfitDistributed: 0,
-        usersProcessed: 0
+        usersProcessed: 0,
+        expiredInvestments: 0
       };
 
       for (const user of users) {
         console.log(`\n--- Processing User: ${user.username} (${user._id}) ---`);
-        console.log(`Current total earnings: $${user.totalEarnings || 0}`);
         
         try {
-          // Get user's approved investments
-          const investments = await Investment.find({
+          // First, handle expired investments
+          const expiredInvestments = await Investment.find({
             userId: user._id,
             status: 'approved',
-            expiresAt: { $gt: new Date() },
-            
+            expiresAt: { $lte: new Date() }
           });
 
-          console.log(`Found ${investments.length} approved investments for user`);
+          console.log(`Found ${expiredInvestments.length} expired investments`);
 
-          if (investments.length === 0) {
+          for (const investment of expiredInvestments) {
+            console.log(`\nProcessing Expired Investment: ${investment._id}`);
+            console.log(`Amount: $${investment.amount}, Total Profit: $${investment.profit}`);
+
+            // Deduct profit from total earnings
+            user.totalEarnings = (user.totalEarnings || 0) - investment.profit;
+            console.log(`Deducted profit from total earnings: $${investment.profit}`);
+
+            // Update user's available balance with the investment amount
+            // user.availableBalance = (user.availableBalance || 0) + investment.amount;
+            // console.log(`Added investment amount to available balance: $${investment.amount}`);
+
+            // Deduct investment amount from active deposit
+            user.activeDeposit = (user.activeDeposit || 0) - investment.amount;
+            console.log(`Deducted from active deposit: $${investment.amount}`);
+
+            // Create transaction for investment completion
+            await Transaction.create({
+              userId: user._id,
+              type: 'investment_completed',
+              amount: investment.amount,
+              status: 'completed',
+              currency: investment.paymentMethod,
+              description: `Investment completed: ${investment.selectedPackage} - Principal: $${investment.amount}`,
+              walletAddress: user.walletAddress
+            });
+
+            // Delete the expired investment
+            await Investment.findByIdAndDelete(investment._id);
+            console.log(`✅ Deleted expired investment: ${investment._id}`);
+
+            profitResults.expiredInvestments++;
+          }
+
+          // Save user changes if any expired investments were processed
+          if (expiredInvestments.length > 0) {
+            await user.save();
+            console.log(`✅ Updated user balances and earnings`);
+          }
+
+          // Now process active investments
+          const activeInvestments = await Investment.find({
+            userId: user._id,
+            status: 'approved',
+            expiresAt: { $gt: new Date() }
+          });
+
+          console.log(`Found ${activeInvestments.length} active investments for user`);
+
+          if (activeInvestments.length === 0) {
             console.log('No active investments to process, skipping user');
             continue;
           }
 
           let userDailyProfit = 0;
 
-          for (const investment of investments) {
+          for (const investment of activeInvestments) {
             console.log(`\nProcessing Investment: ${investment._id}`);
             console.log(`Package: ${investment.selectedPackage}`);
             console.log(`Amount: $${investment.amount}`);
@@ -75,6 +122,10 @@ class ProfitService {
             await investment.save();
             console.log(`✅ Saved investment update`);
 
+            // Add daily profit to available balance immediately
+            user.availableBalance = (user.availableBalance || 0) + dailyProfit;
+            console.log(`Added daily profit to available balance: $${dailyProfit}`);
+
             userDailyProfit += dailyProfit;
 
             // Create profit transaction
@@ -104,7 +155,7 @@ class ProfitService {
 
           profitResults.usersProcessed++;
         } catch (error) {
-          console.error(`❌ Error processing profits for user ${user._id}:`, error);
+          console.error(`❌ Error processing user ${user._id}:`, error);
           profitResults.failed++;
         }
       }
@@ -113,6 +164,7 @@ class ProfitService {
       console.log(`✅ Users processed: ${profitResults.usersProcessed}`);
       console.log(`✅ Successful distributions: ${profitResults.successful}`);
       console.log(`❌ Failed distributions: ${profitResults.failed}`);
+      console.log(`📅 Expired investments processed: ${profitResults.expiredInvestments}`);
       console.log(`💰 Total profit distributed: $${profitResults.totalProfitDistributed}`);
       console.log('\n=== End of Daily Profit Distribution ===\n');
 

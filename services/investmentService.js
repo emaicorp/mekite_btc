@@ -26,19 +26,20 @@ class InvestmentService {
 
   static async deducBalance(userId, amount) {
     try {
-      const user = await User.findById(userId).select('activeDeposit');
+      console.log("ammount", amount)
+      const user = await User.findById(userId);
       if (!user) throw new Error('User not found');
       
-      if (user.activeDeposit < amount) {
+      if (user.availableBalance < amount) {
         throw new Error('Insufficient balance');
       }
 
       const updatedUser = await User.findByIdAndUpdate(
         userId,
-        { $set: { activeDeposit: user.activeDeposit - amount } },
+        { $set: { availableBalance: user.availableBalance - amount } },
         { new: true }
       );
-
+      console.log("updatedUser", updatedUser)
       return updatedUser;
     } catch (error) {
       throw new Error(`Error deducting balance: ${error.message}`);
