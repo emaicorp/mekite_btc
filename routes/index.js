@@ -13,6 +13,7 @@ const usersRoutes = require('./userRoutes');
 const transactionRoutes = require('./transaction.routes');
 const profitRoutes = require('./profit.routes');
 const withdrawalRoutes = require('./withdrawalRoutes');
+const adminEmailRoutes = require('./adminEmailRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/investments', investmentRoutes);
@@ -26,5 +27,6 @@ router.use('/users', usersRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/profit', profitRoutes);
 router.use('/withdrawals', withdrawalRoutes);
+router.use('/admin-emails', adminEmailRoutes);
 
 module.exports = router; 
