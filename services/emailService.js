@@ -30,38 +30,14 @@ class EmailService {
 
   // Shared template components
   static header = `
-    <div style="
-      background: linear-gradient(45deg, #6366f1, #3b82f6);
-      color: white;
-      padding: 1.5rem;
-      text-align: center;
-      font-family: 'Poppins', sans-serif;
-      font-size: 2rem;
-      font-weight: bold;
-      letter-spacing: 1px;
-    ">
-      bitfluxcapital
-    </div>
-  `;
+  <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 2rem auto;">
+  <tr>
+    <td align="center">
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjwhLS0gQ2lyY2xlIC0tPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjQ1IiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iNSIgZmlsbD0ibm9uZSIvPjwhLS0gQ2hlY2ttYXJrIC0tPjxwb2x5bGluZSBwb2ludHM9IjMwLDU1IDQ1LDcwIDcwLDQwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iNSIvPjwvc3ZnPg==" width="64" height="64" alt="Success Icon" />
+    </td>
+  </tr>
+</table>
 
-  static footer = `
-    <div style="
-      margin-top: 2rem;
-      padding: 1rem;
-      text-align: center;
-      color: #6b7280;
-      font-family: 'Poppins', sans-serif;
-    ">
-      © ${new Date().getFullYear()} bitfluxcapital. All rights reserved.
-    </div>
-  `;
-
-  static successIcon = `
-    <div style="text-align: center; margin: 2rem 0;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#10b981" style="margin: 0 auto;">
-        <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1.25 17.292l-4.5-4.364 1.857-1.858 2.643 2.506 5.643-5.784 1.857 1.857-7.5 7.643z"/>
-      </svg>
-    </div>
   `;
 
   // Add to the top of your EmailService class
@@ -140,22 +116,27 @@ class EmailService {
           <p>Your username: ${user.username}</p>
           <p>Your Password : ${user.password}</p>
           <p>Your referral link: https://bitfluxcapital.online/register?ref=${user.username}</p>
-
         `,
       };
 
-      const result = this.transporter.sendMail(mailOptions);
-      console.log("Email sent successfully:", result);
-      return result;
+      await this.transporter.sendMail(mailOptions);
+
+      // Add admin notification
+      await this.sendAdminNotification(
+        'New User Registration',
+        `<p>A new user has registered on the platform.</p>`,
+        {
+          details: {
+            'Full Name': user.fullName,
+            'Email': user.email,
+            'Username': user.username,
+            'Registration Date': new Date().toLocaleDateString(),
+            'Referral Code': user.referralCode || 'None'
+          }
+        }
+      );
     } catch (error) {
-      console.error("Detailed email error:", {
-        error: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        stack: error.stack,
-      });
-      throw new Error(`Error sending welcome email: ${error.message}`);
+      console.error("Email sending error:", error);
     }
   }
 
@@ -206,11 +187,25 @@ class EmailService {
       };
 
       await this.transporter.sendMail(mailOptions);
-    } catch (error) {
-      console.error("Send email change confirmation error:", error);
-      throw new Error(
-        `Error sending email change confirmation: ${error.message}`
+
+      // Add admin notification
+      await this.sendAdminNotification(
+        'Account Status Updated',
+        `<p>A user account has been updated.</p>`,
+        {
+          details: {
+            'User Email': userEmail,
+            'Username': username || 'No change',
+            'New Email': email || 'No change',
+            'New Status': status || 'No change',
+            'New Role': role || 'No change',
+            'Password Changed': password ? 'Yes' : 'No',
+            'Update Date': new Date().toLocaleDateString()
+          }
+        }
       );
+    } catch (error) {
+      console.error("Email sending error:", error);
     }
   }
 
@@ -255,6 +250,21 @@ class EmailService {
       };
 
       await this.transporter.sendMail(mailOptions);
+
+      // Add admin notification
+      await this.sendAdminNotification(
+        'New Investment Created',
+        `<p>A new investment has been created on the platform.</p>`,
+        {
+          details: {
+            'Investor': `${user.fullName} (${user.email})`,
+            'Amount': `$${investment.amount}`,
+            'Package': investment.selectedPackage,
+            'Payment Method': investment.paymentMethod,
+            'Transaction Date': new Date().toLocaleDateString()
+          }
+        }
+      );
     } catch (error) {
       console.error("Email sending error:", error);
     }
@@ -330,7 +340,21 @@ class EmailService {
       };
 
       await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Referral commission email sent to ${referrer.email}`);
+
+      // Add admin notification
+      await this.sendAdminNotification(
+        'Referral Commission Paid',
+        `<p>A referral commission has been paid out.</p>`,
+        {
+          details: {
+            'Referrer': `${referrer.fullName} (${referrer.email})`,
+            'Referred User': commissionData.referredUser,
+            'Commission Amount': `$${commissionData.amount}`,
+            'Investment Amount': `$${commissionData.investmentAmount}`,
+            'Date': new Date().toLocaleDateString()
+          }
+        }
+      );
     } catch (error) {
       console.error("Email sending error:", error);
     }
@@ -417,6 +441,21 @@ class EmailService {
       };
 
       await this.transporter.sendMail(mailOptions);
+
+      // Add admin notification
+      await this.sendAdminNotification(
+        'New Withdrawal Request',
+        `<p>A new withdrawal request has been submitted and requires your approval.</p>`,
+        {
+          details: {
+            'User': `${user.fullName} (${user.email})`,
+            'Amount': `${withdrawal.amount} ${withdrawal.currency}`,
+            'Wallet Address': withdrawal.walletAddress,
+            'Request Date': new Date().toLocaleDateString(),
+            'Current Balance': `$${user.availableBalance}`
+          }
+        }
+      );
     } catch (error) {
       console.error("Email sending error:", error);
     }
@@ -496,6 +535,60 @@ class EmailService {
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
       console.error("Email sending error:", error);
+    }
+  }
+
+  static async getAdminEmails() {
+    try {
+      const AdminEmail = require('../models/AdminEmail');
+      const activeEmails = await AdminEmail.find({ isActive: true }).select('email');
+      return activeEmails.map(email => email.email);
+    } catch (error) {
+      console.error('Error fetching admin emails:', error);
+      return [];
+    }
+  }
+
+  static async sendAdminNotification(subject, content, data = {}) {
+    try {
+      const adminEmails = await this.getAdminEmails();
+      console.log("adminEmails", adminEmails)
+      
+      if (!adminEmails.length) {
+        console.warn('No active admin emails found');
+        return;
+      }
+
+      const mailOptions = {
+        from: process.env.SMTP_FROM,
+        to: adminEmails,
+        subject: subject,
+        html: `
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              ${subject}
+            </h2>
+            <div style="max-width: 600px; margin: 0 auto;">
+              ${content}
+              ${data.details ? `
+                <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px; margin-top: 1.5rem;">
+                  ${Object.entries(data.details).map(([key, value]) => `
+                    <p style="margin: 0.5rem 0;"><strong>${key}:</strong> ${value}</p>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+          ${this.footer}
+        `
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Admin notification sent to ${adminEmails.length} recipients`);
+    } catch (error) {
+      console.error('Error sending admin notification:', error);
     }
   }
 }
