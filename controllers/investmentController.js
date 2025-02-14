@@ -78,13 +78,13 @@ class InvestmentController {
       const { status } = req.body;
 
       const investment = await InvestmentService.updateStatus(investmentId, status);
-      
-      // If investment is approved
-      if (status === 'approved') {
-        const user = await User.findById(investment.userId);
+      const user = await User.findById(investment.userId);
         if (!user) {
           throw new Error('User not found');
         }
+      // If investment is approved
+      if (status === 'approved') {
+        
 
         console.log(`Processing approval for investment ${investmentId}`);
         console.log(`Current active deposit for user ${user.username}: $${user.activeDeposit}`);
@@ -158,6 +158,8 @@ class InvestmentController {
         }
 
         // Send investment approval email
+        await EmailService.sendInvestmentApproval(user, investment, status);
+      }else{
         await EmailService.sendInvestmentApproval(user, investment, status);
       }
 

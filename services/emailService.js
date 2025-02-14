@@ -30,10 +30,48 @@ class EmailService {
 
   // Shared template components
   static header = `
-  <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 2rem auto;">
+    <div style="
+      background: linear-gradient(45deg, #6366f1, #3b82f6);
+      color: white;
+      padding: 1.5rem;
+      text-align: center;
+      font-family: 'Poppins', sans-serif;
+      font-size: 2rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+      background-clip : image ;
+    ">
+      BitFluxCapital
+    </div>
+  `;
+
+  static footer = `
+    <div style="
+      margin-top: 2rem;
+      padding: 1rem;
+      text-align: center;
+      color: #6b7280;
+      font-family: 'Poppins', sans-serif;
+    ">
+      © ${new Date().getFullYear()} bitfluxcapital. All rights reserved.
+    </div>
+  `;
+
+  static successIcon = `
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 2rem auto;">
   <tr>
     <td align="center">
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjwhLS0gQ2lyY2xlIC0tPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjQ1IiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iNSIgZmlsbD0ibm9uZSIvPjwhLS0gQ2hlY2ttYXJrIC0tPjxwb2x5bGluZSBwb2ludHM9IjMwLDU1IDQ1LDcwIDcwLDQwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iNSIvPjwvc3ZnPg==" width="64" height="64" alt="Success Icon" />
+      <img src="https://bitfluxcapital.online/success.png" width="200" height="200" alt="Success Icon" />
+    </td>
+  </tr>
+</table>
+
+  `;
+    static errorIcon = `
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 2rem auto;">
+  <tr>
+    <td align="center">
+      <img src="https://bitfluxcapital.online/error.png" width="200" height="200" alt="Success Icon" />
     </td>
   </tr>
 </table>
@@ -96,11 +134,7 @@ class EmailService {
 
   static async sendWelcomeEmail(user) {
     try {
-      console.log("Attempting to send welcome email to:", user.email);
-      console.log("Using email credentials:", {
-        user: process.env.EMAIL_USER,
-        passLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
-      });
+    
 
       const mailOptions = {
         from: {
@@ -238,11 +272,13 @@ class EmailService {
             <div style="max-width: 500px; margin: 0 auto;">
               <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
               <p style="margin-bottom: 1.5rem;">Your investment of $${investment.amount} has been successfully processed.</p>
+              <p> Below are the details of your investment</p>
               <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
                 <p style="margin: 0.5rem 0;"><strong>Amount:</strong> $${investment.amount}</p>
                 <p style="margin: 0.5rem 0;"><strong>Package:</strong> ${investment.selectedPackage}</p>
                 <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${investment.createdAt.toLocaleDateString()}</p>
               </div>
+              <p><i>Visit Your Dashboard to view Your Updated Balance And Active Deposites</i></p>
             </div>
           </div>
           ${this.footer}
@@ -272,34 +308,63 @@ class EmailService {
 
   static async sendInvestmentApproval(user, investment, status) {
     try {
+      const isApproved = status === "approved";
       const mailOptions = {
         from: process.env.SMTP_FROM,
         to: user.email,
-        subject: `Investment ${status}`,
+        subject: `Investment ${status.charAt(0).toUpperCase() + status.slice(1)}`,
         html: `
-          <h2>Investment Approved</h2>
-          <p>Dear ${user.fullName},</p>
-          <p>Your investment has been ${status}  ${
-          status == "approved" ? "and is now active." : "."
-        }</p>
-          <p>Details:</p>
-          <ul>
-            <li>Amount: $${investment.amount}</li>
-            <li>Package: ${investment.selectedPackage}</li>
-            ${
-              status == "approved"
-                ? ` <li>Start Date: ${investment.createdAt.toLocaleDateString()}</li>
-            <li>End Date: ${investment.expiresAt.toLocaleDateString()}</li>`
-                : `            <li>Update Date: ${Date.now.toLocaleDateString()}</li>`
-            }
-          
-          </ul>
-          <p>You can track your earnings in your dashboard.</p>
-          <p>Thank you for investing with us!</p>
-        `,
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${isApproved ? this.successIcon : this.errorIcon}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              Investment ${status.charAt(0).toUpperCase() + status.slice(1)}
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              <p style="margin-bottom: 1rem;">Dear ${user.fullName},</p>
+              <p style="margin-bottom: 1.5rem;">
+                Your investment has been ${status} ${isApproved ? "and is now active." : "."}
+              </p>
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                <p style="margin: 0.5rem 0;"><strong>Amount:</strong> $${investment.amount}</p>
+                <p style="margin: 0.5rem 0;"><strong>Package:</strong> ${investment.selectedPackage}</p>
+                ${isApproved ? `
+                  <p style="margin: 0.5rem 0;"><strong>Start Date:</strong> ${investment.createdAt.toLocaleDateString()}</p>
+                  <p style="margin: 0.5rem 0;"><strong>End Date:</strong> ${investment.expiresAt.toLocaleDateString()}</p>
+                ` : `
+                  <p style="margin: 0.5rem 0;"><strong>Update Date:</strong> ${new Date().toLocaleDateString()}</p>
+                  ${investment.remarks ? `<p style="margin: 0.5rem 0;"><strong>Reason:</strong> ${investment.remarks}</p>` : ''}
+                `}
+              </div>
+              ${isApproved ? `
+                <p style="margin-top: 1.5rem;">You can track your earnings in your dashboard.</p>
+              ` : `
+                <p style="margin-top: 1.5rem;">If you have any questions, please contact support.</p>
+              `}
+            </div>
+          </div>
+          ${this.footer}
+        `
       };
 
       await this.transporter.sendMail(mailOptions);
+
+      // Admin notification
+      await this.sendAdminNotification(
+        `Investment ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+        `<p>An investment has been ${status} on the platform.</p>`,
+        {
+          details: {
+            'Investor': `${user.fullName} (${user.email})`,
+            'Amount': `$${investment.amount}`,
+            'Package': investment.selectedPackage,
+            'Status': status.charAt(0).toUpperCase() + status.slice(1),
+            'Transaction Date': new Date().toLocaleDateString(),
+            ...(investment.remarks && {'Reason': investment.remarks})
+          }
+        }
+      );
     } catch (error) {
       console.error("Email sending error:", error);
     }
@@ -493,6 +558,20 @@ class EmailService {
       };
 
       await this.transporter.sendMail(mailOptions);
+
+      await this.sendAdminNotification(
+        'Withdrawal Approved',
+        `<p>A new Withdrawal has been Approved on the platform.</p>`,
+        {
+          details: {
+            'Investor': `${user.fullName} (${user.email})`,
+            'Amount': `$${withdrawal.amount}`,
+            'Currency': withdrawal.currency,
+            'Wallet Address': withdrawal.walletAddress,
+            'Transaction Date': new Date().toLocaleDateString()
+          }
+        }
+      );
     } catch (error) {
       console.error("Email sending error:", error);
     }
@@ -508,6 +587,7 @@ class EmailService {
           ${this.emailStyles}
           ${this.header}
           <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+          ${this.errorIcon}
             <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
               Withdrawal Request Rejected
             </h2>
@@ -529,8 +609,7 @@ class EmailService {
             </div>
           </div>
           ${this.footer}
-        `
-      };
+        `      };
 
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
@@ -605,3 +684,4 @@ EmailService.transporter.verify((error, success) => {
 });
 
 module.exports = EmailService;
+
