@@ -56,6 +56,31 @@ class TransactionController {
       });
     }
   }
+
+  static async getUserTransactions(req, res) {
+    try {
+      const { type, status, page = 1, limit = 10 } = req.query;
+      const userId = req.user.id;
+
+      const result = await TransactionService.getUserTransactions(
+        userId,
+        { type, status },
+        { page: parseInt(page), limit: parseInt(limit) }
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Transactions retrieved successfully',
+        data: result
+      });
+    } catch (error) {
+      console.error('Get user transactions error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
 }
 
 module.exports = TransactionController; 

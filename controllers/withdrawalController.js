@@ -110,6 +110,41 @@ const WithdrawalController = {
         message: error.message
       });
     }
+  },
+
+  deleteUserWithdrawal: async (req, res) => {
+    try {
+      const { withdrawalId } = req.params;
+      const userId = req.user.id;
+
+      const withdrawal = await WithdrawalService.getUserWithdrawal(withdrawalId, userId);
+      
+      if (!withdrawal) {
+        return res.status(404).json({
+          success: false,
+          message: 'Withdrawal not found'
+        });
+      }
+
+      if (withdrawal.status !== 'pending') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot delete a processed withdrawal'
+        });
+      }
+
+      await WithdrawalService.deleteWithdrawal(withdrawalId);
+
+      res.json({
+        success: true,
+        message: 'Withdrawal request deleted successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
   }
 };
 

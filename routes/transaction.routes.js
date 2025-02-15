@@ -5,6 +5,45 @@ const AuthMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
+ * /transactions/my-transactions:
+ *   get:
+ *     summary: Get authenticated user's transactions
+ *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [deposit, withdrawal, investment, referral, profit]
+ *         description: Filter transactions by type
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, completed, failed, cancelled]
+ *         description: Filter transactions by status
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: List of user's transactions
+ */
+router.get('/my-transactions', AuthMiddleware.authenticate, TransactionController.getUserTransactions);
+
+/**
+ * @swagger
  * /transactions:
  *   get:
  *     summary: Get all transactions (Admin)
@@ -90,6 +129,6 @@ router.get('/:id', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, T
  *       200:
  *         description: Transaction status updated
  */
-router.patch('/:id/status', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, TransactionController.updateTransactionStatus);
+router.patch('/:id', AuthMiddleware.authenticate, AuthMiddleware.authorizeAdmin, TransactionController.updateTransactionStatus);
 
 module.exports = router; 

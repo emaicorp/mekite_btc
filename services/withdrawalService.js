@@ -92,24 +92,17 @@ class WithdrawalService {
     }
   }
 
+  static async getUserWithdrawal(withdrawalId, userId) {
+    try {
+      return await Withdrawal.findOne({ _id: withdrawalId, userId });
+    } catch (error) {
+      throw new Error(`Error fetching withdrawal: ${error.message}`);
+    }
+  }
+
   static async deleteWithdrawal(withdrawalId) {
     try {
-      const withdrawal = await Withdrawal.findById(withdrawalId);
-      
-      if (!withdrawal) {
-        throw new Error('Withdrawal not found');
-      }
-
-      if (withdrawal.status === 'approved') {
-        throw new Error('Cannot delete an approved withdrawal');
-      }
-
       await Withdrawal.findByIdAndDelete(withdrawalId);
-      
-      return {
-        success: true,
-        message: 'Withdrawal deleted successfully'
-      };
     } catch (error) {
       throw new Error(`Error deleting withdrawal: ${error.message}`);
     }

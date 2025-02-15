@@ -93,6 +93,48 @@ class TransactionService {
       throw new Error(`Error getting transaction stats: ${error.message}`);
     }
   }
+
+  static async getUserTransactions(userId, filters = {}, pagination = {}) {
+    try {
+      const { type, status } = filters;
+      const { page, limit } = pagination;
+      const skip = (page - 1) * limit;
+
+      // Build query
+      const query = { userId };
+      if (type) query.type = type;
+      if (status) query.status = status;
+
+      // Get total count for pagination
+      const total = await Transaction.countDocuments(query);
+
+      // Get transactions with pagination
+      const transactions = await Transaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'username email');
+
+      // Calculate pagination info
+      const totalPages = Math.ceil(total / limit);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        transactions,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages,
+          hasNextPage,
+          hasPrevPage
+        }
+      };
+    } catch (error) {
+      throw new Error(`Error fetching user transactions: ${error.message}`);
+    }
+  }
 }
 
 module.exports = TransactionService;
