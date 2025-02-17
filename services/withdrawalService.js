@@ -56,6 +56,7 @@ class WithdrawalService {
         }
         
         user.availableBalance -= withdrawal.amount;
+        user.totalWithdrawals = withdrawal.amount;
         await user.save();
       }
 
