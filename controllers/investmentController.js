@@ -94,10 +94,11 @@ class InvestmentController {
 
          if(investment.paymentMethod == 'balance'){
         await InvestmentService.deducBalance(user._id, investment.amount)
-      }else{
-        user.availableBalance = (user.availableBalance || 0) + investment.amount;
-        
       }
+      // else{
+      //   user.availableBalance = (user.availableBalance || 0) + investment.amount;
+        
+      // }
       await user.save();
         console.log(`Updated active deposit to: $${user.activeDeposit}`);
         console.log(`✅ Investment approved and active deposit updated`);

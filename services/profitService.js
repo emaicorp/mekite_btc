@@ -47,6 +47,7 @@ class ProfitService {
             // Deduct investment amount from active deposit
             user.activeDeposit = (user.activeDeposit || 0) - investment.amount;
             console.log(`Deducted from active deposit: $${investment.amount}`);
+            user.availableBalance = (user.availableBalance || 0) + investment.amount + investment.profit;
 
             // Create transaction for investment completion
             await Transaction.create({
