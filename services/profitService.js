@@ -124,8 +124,8 @@ class ProfitService {
             console.log(`✅ Saved investment update`);
 
             // Add daily profit to available balance immediately
-            user.availableBalance = (user.availableBalance || 0) + dailyProfit;
-            console.log(`Added daily profit to available balance: $${dailyProfit}`);
+            // user.availableBalance = (user.availableBalance || 0) + dailyProfit;
+            // console.log(`Added daily profit to available balance: $${dailyProfit}`);
 
             userDailyProfit += dailyProfit;
 
