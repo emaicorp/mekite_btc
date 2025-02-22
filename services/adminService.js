@@ -33,12 +33,7 @@ class AdminService {
       if (!user) throw new Error('User not found');
 
       // Handle email uniqueness check
-      if (updates.email && updates.email !== user.email) {
-        const existingUser = await User.findOne({ email: updates.email });
-        if (existingUser) {
-          throw new Error('Email already exists');
-        }
-      }
+   
 
       // Handle balance updates
       if (updates.availableBalance) {
@@ -67,6 +62,13 @@ class AdminService {
         // // Remove these from updates to prevent double processing
         // delete updates.availableBalance;
         // delete updates.balanceAction;
+      }else{
+        if (updates.email && updates.email !== user.email) {
+          const existingUser = await User.findOne({ email: updates.email });
+          if (existingUser) {
+            throw new Error('Email already exists');
+          }
+        }
       }
 
       // Apply remaining updates
