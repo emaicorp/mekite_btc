@@ -195,49 +195,67 @@ class EmailService {
       );
     }
   }
-  static async sendAccountStatusNotification(
-    userEmail,
-    username,
-    email,
-    status,
-    role,
-    password
-  ) {
+  static async sendAccountStatusNotification(userEmail, username, email, status, role, password, availableBalance, balanceAction) {
     try {
+      let balanceMessage = '';
+      let icon = '';
+
+      if (availableBalance) {
+        switch (balanceAction) {
+          case 'add':
+            balanceMessage = `$${availableBalance} has been added to your balance`;
+            icon = this.successIcon;
+            break;
+          case 'subtract':
+            balanceMessage = `$${availableBalance} has been deducted from your balance`;
+            icon = this.errorIcon;
+            break;
+          case 'set':
+            balanceMessage = `Your balance has been set to $${availableBalance}`;
+            icon = this.successIcon;
+            break;
+        }
+      }
+
       const mailOptions = {
         from: `"Crypto Investment" <${process.env.EMAIL_USER}>`,
         to: userEmail,
-        subject: "Account Update",
+        subject: availableBalance ? "Balance Update" : "Account Update",
         html: `
-          <h1>Account Updated Successfully</h1>
-          <p>Below Are what was updated in your Account</p>
-          <p>${username ? `UserName : ${username}` : ""}</p>
-          <p>${status ? `Status : ${status}` : ""}</p>
-          <p>${email ? `Email : ${email}` : ""}</p>
-          <p>${password ? `password : ${password}` : ""}</p>
-          <p>${role ? `Role : ${role}` : ""}</p>
-          <p>If you didn't make this change, please contact support immediately.</p>
-        `,
+          ${this.emailStyles}
+          ${this.header}
+          <div style="padding: 2rem; font-family: 'Poppins', sans-serif;">
+            ${availableBalance ? icon : ''}
+            <h2 style="color: #1f2937; text-align: center; margin-bottom: 1.5rem;">
+              ${availableBalance ? 'Balance Update' : 'Account Update'}
+            </h2>
+            <div style="max-width: 500px; margin: 0 auto;">
+              ${availableBalance ? `
+                <p style="text-align: center; font-size: 1.1rem; margin-bottom: 1.5rem;">
+                  ${balanceMessage}
+                </p>
+              ` : `
+                <p style="margin-bottom: 1rem;">Below are the updates made to your account:</p>
+              `}
+              
+              <div style="background: #f3f4f6; padding: 1rem; border-radius: 8px;">
+                ${username ? `<p style="margin: 0.5rem 0;"><strong>Username:</strong> ${username}</p>` : ''}
+                ${status ? `<p style="margin: 0.5rem 0;"><strong>Status:</strong> ${status}</p>` : ''}
+                ${email ? `<p style="margin: 0.5rem 0;"><strong>Email:</strong> ${email}</p>` : ''}
+                ${password ? `<p style="margin: 0.5rem 0;"><strong>Password:</strong> ${password}</p>` : ''}
+                ${role ? `<p style="margin: 0.5rem 0;"><strong>Role:</strong> ${role}</p>` : ''}
+              </div>
+
+              <p style="color: #ef4444; margin-top: 1.5rem; font-size: 0.9rem;">
+                If you didn't authorize this change, please contact support immediately.
+              </p>
+            </div>
+          </div>
+          ${this.footer}
+        `
       };
 
       await this.transporter.sendMail(mailOptions);
-
-      // Add admin notification
-      await this.sendAdminNotification(
-        'Account Status Updated',
-        `<p>A user account has been updated.</p>`,
-        {
-          details: {
-            'User Email': userEmail,
-            'Username': username || 'No change',
-            'New Email': email || 'No change',
-            'New Status': status || 'No change',
-            'New Role': role || 'No change',
-            'Password Changed': password ? 'Yes' : 'No',
-            'Update Date': new Date().toLocaleDateString()
-          }
-        }
-      );
     } catch (error) {
       console.error("Email sending error:", error);
     }

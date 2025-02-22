@@ -26,15 +26,17 @@ class AdminController {
         req.params.userId, 
         req.body
       );
-      const {username, email, status, role, password} = req.body
+      const {username, email, status, role, password, availableBalance , balanceAction} = req.body
       // Send notification email to user
+      // console.log(req.body)
       await EmailService.sendAccountStatusNotification(user.email,
         username,
         email,
         status,
         role,
-        password
-        
+        password,
+        availableBalance,
+        balanceAction
       );
 
       res.status(200).json({

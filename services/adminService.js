@@ -18,7 +18,8 @@ class AdminService {
       }
 
       const allowedUpdates = [
-        'username', 'email', 'role', 'status','password'
+        'username', 'email', 'role', 'status', 'password',
+        'availableBalance', 'balanceAction'
       ];
       
       const updateKeys = Object.keys(updates);
@@ -39,9 +40,40 @@ class AdminService {
         }
       }
 
-      // Apply updates
+      // Handle balance updates
+      if (updates.availableBalance) {
+        const amount = parseFloat(updates.availableBalance);
+        if (isNaN(amount)) {
+          throw new Error('Invalid balance amount');
+        }
+
+        switch (updates.balanceAction) {
+          case 'add':
+            user.availableBalance += amount;
+            break;
+          case 'subtract':
+            if (user.availableBalance < amount) {
+              throw new Error('Insufficient balance');
+            }
+            user.availableBalance -= amount;
+            break;
+          case 'set':
+            user.availableBalance = amount;
+            break;
+          default:
+            throw new Error('Invalid balance action. Use "add", "subtract", or "set"');
+        }
+
+        // // Remove these from updates to prevent double processing
+        // delete updates.availableBalance;
+        // delete updates.balanceAction;
+      }
+
+      // Apply remaining updates
       updateKeys.forEach(key => {
-        user[key] = updates[key];
+        if (key !== 'availableBalance' && key !== 'balanceAction') {
+          user[key] = updates[key];
+        }
       });
 
       await user.save();
