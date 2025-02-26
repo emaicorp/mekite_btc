@@ -47,7 +47,9 @@ class ProfitService {
             // Deduct investment amount from active deposit
             user.activeDeposit = (user.activeDeposit || 0) - investment.amount;
             console.log(`Deducted from active deposit: $${investment.amount}`);
+            console.log(`users available balance Before Save: $${user.availableBalance}`)
             user.availableBalance = (user.availableBalance || 0) + investment.amount + investment.profit;
+            console.log(`users available balance after calculation: $${user.availableBalance}`)
 
             // Create transaction for investment completion
             await Transaction.create({
@@ -69,7 +71,11 @@ class ProfitService {
 
           // Save user changes if any expired investments were processed
           if (expiredInvestments.length > 0) {
+            console.log(`users available balance Before Database Save: $${user.availableBalance}`)
+
             await user.save();
+            console.log(`users available balance after Database Save: $${user.availableBalance}`)
+
             console.log(`✅ Updated user balances and earnings`);
           }
 

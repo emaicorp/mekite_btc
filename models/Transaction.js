@@ -9,7 +9,7 @@ const TransactionSchema = new Schema({
   },
   type: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'investment', 'referral', 'profit', 'referral_commission'],
+    enum: ['deposit', 'withdrawal', 'investment', 'referral', 'profit', 'referral_commission', 'investment_completed'],
     required: true
   },
   currency: {
