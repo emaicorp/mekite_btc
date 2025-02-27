@@ -37,8 +37,8 @@ class ProfitService {
             console.log(`Amount: $${investment.amount}, Total Profit: $${investment.profit}`);
 
             // Deduct profit from total earnings
-            user.totalEarnings = (user.totalEarnings || 0) - investment.profit;
-            console.log(`Deducted profit from total earnings: $${investment.profit}`);
+            //user.totalEarnings = (user.totalEarnings || 0) - investment.profit;
+            //console.log(`Deducted profit from total earnings: $${investment.profit}`);
 
             // Update user's available balance with the investment amount
             // user.availableBalance = (user.availableBalance || 0) + investment.amount;
@@ -126,14 +126,49 @@ class ProfitService {
             
             console.log(`Updated investment profit: $${oldProfit} -> $${investment.profit}`);
             
-            await investment.save();
-            console.log(`✅ Saved investment update`);
-
-            // Add daily profit to available balance immediately
-            // user.availableBalance = (user.availableBalance || 0) + dailyProfit;
-            // console.log(`Added daily profit to available balance: $${dailyProfit}`);
-
-            userDailyProfit += dailyProfit;
+            // Check if investment is expiring today
+            const isExpiringToday = investment.expiresAt.toDateString() === new Date().toDateString();
+            
+            if (isExpiringToday) {
+              console.log(`Investment ${investment._id} is expiring today`);
+              
+              // Add final profit and principal to available balance
+              user.availableBalance = (user.availableBalance || 0) + investment.amount + investment.profit;
+              console.log(`Added final amount to available balance: $${investment.amount + investment.profit}`);
+              
+              // Add profit to total earnings
+              user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
+              console.log(`Added profit to total earnings: $${investment.profit}`);
+              
+              // Deduct from active deposit
+              user.activeDeposit = (user.activeDeposit || 0) - investment.amount;
+              console.log(`Deducted from active deposit: $${investment.amount}`);
+              
+              // Create transaction for investment completion
+              await Transaction.create({
+                userId: user._id,
+                type: 'investment_completed',
+                amount: investment.amount,
+                status: 'completed',
+                currency: investment.paymentMethod,
+                description: `Investment completed: ${investment.selectedPackage} - Principal: $${investment.amount}, Profit: $${investment.profit}`,
+                walletAddress: user.walletAddress
+              });
+              
+              // Delete the expiring investment
+              await Investment.findByIdAndDelete(investment._id);
+              console.log(`✅ Deleted expiring investment: ${investment._id}`);
+              
+              profitResults.expiredInvestments++;
+            } else {
+              // If not expiring, just add daily profit to available balance
+              user.availableBalance = (user.availableBalance || 0) + dailyProfit;
+              console.log(`Added daily profit to available balance: $${dailyProfit}`);
+              
+              // Save investment update
+              await investment.save();
+              console.log(`✅ Saved investment update`);
+            }
 
             // Create profit transaction
             const transaction = await Transaction.create({
