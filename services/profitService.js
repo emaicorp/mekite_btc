@@ -39,6 +39,8 @@ class ProfitService {
             // Deduct profit from total earnings
             //user.totalEarnings = (user.totalEarnings || 0) - investment.profit;
             //console.log(`Deducted profit from total earnings: $${investment.profit}`);
+            //user.totalEarnings = (user.totalEarnings || 0) - investment.profit;
+            //console.log(`Deducted profit from total earnings: $${investment.profit}`);
 
             // Update user's available balance with the investment amount
             // user.availableBalance = (user.availableBalance || 0) + investment.amount;
