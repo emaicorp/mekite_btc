@@ -9,7 +9,7 @@ class ProfitService {
       console.log('\n=== Starting Daily Profit Distribution ===\n');
       
       const currentDate = new Date();
-      currentDate.setHours(0, 0, 0, 0); // Set to start of day for date comparison
+      currentDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
       console.log(`Processing for date: ${currentDate.toDateString()}`);
 
       const users = await User.find({}).select('_id username totalEarnings walletAddress availableBalance activeDeposit');
@@ -27,45 +27,42 @@ class ProfitService {
         console.log(`\n--- Processing User: ${user.username} (${user._id}) ---`);
         
         try {
-          // Find investments expiring today or already expired
+          // Find investments expiring within next 24 hours
           const expiredInvestments = await Investment.find({
             userId: user._id,
             status: 'approved',
             expiresAt: {
-              $lte: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000) // Include investments expiring by end of today
+              $lte: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
             }
           });
 
-          console.log(`Found ${expiredInvestments.length} expired/expiring investments`);
+          console.log(`Found ${expiredInvestments.length} investments expiring within 24 hours`);
 
+          // Process expiring investments
           for (const investment of expiredInvestments) {
-            const investmentExpiryDate = new Date(investment.expiresAt);
-            investmentExpiryDate.setHours(0, 0, 0, 0);
-            
             console.log(`\nProcessing Investment: ${investment._id}`);
-            console.log(`Expiry Date: ${investmentExpiryDate.toDateString()}`);
-            console.log(`Current Date: ${currentDate.toDateString()}`);
-            console.log(`Amount: $${investment.amount}, Total Profit: $${investment.profit}`);
+            console.log(`Amount: $${investment.amount}, Current Profit: $${investment.profit}`);
 
-            // If expiring today, add one final daily profit
-            if (investmentExpiryDate.getTime() === currentDate.getTime()) {
-              const plan = await InvestmentPlan.findOne({ name: investment.selectedPackage });
-              if (plan) {
-                const finalDailyProfit = (investment.amount * plan.dailyProfit) / 100;
-                investment.profit += finalDailyProfit;
-                user.totalEarnings = (user.totalEarnings || 0) + finalDailyProfit;
-                console.log(`Added final daily profit: $${finalDailyProfit}`);
-              }
+            // Calculate final daily profit
+            const plan = await InvestmentPlan.findOne({ name: investment.selectedPackage });
+            if (plan) {
+              const finalDailyProfit = (investment.amount * plan.dailyProfit) / 100;
+              investment.profit += finalDailyProfit;
+              console.log(`Added final daily profit: $${finalDailyProfit}`);
+              
+              // Add daily profit to total earnings
+              user.totalEarnings = (user.totalEarnings || 0) + finalDailyProfit;
+              console.log(`Updated total earnings with final profit: $${finalDailyProfit}`);
             }
-
-            // Deduct from active deposit
-            user.activeDeposit = (user.activeDeposit || 0) - investment.amount;
-            console.log(`Deducted from active deposit: $${investment.amount}`);
 
             // Add investment amount and total profit to available balance
             console.log(`Available balance before: $${user.availableBalance}`);
             user.availableBalance = (user.availableBalance || 0) + investment.amount + investment.profit;
             console.log(`Available balance after: $${user.availableBalance}`);
+
+            // Deduct investment amount and profit from active deposit
+            user.activeDeposit = (user.activeDeposit || 0) - (investment.amount + investment.profit);
+            console.log(`Updated active deposit: $${user.activeDeposit}`);
 
             // Create completion transaction
             await Transaction.create({
@@ -80,7 +77,7 @@ class ProfitService {
 
             // Delete the investment
             await Investment.findByIdAndDelete(investment._id);
-            console.log(`✅ Deleted expired/expiring investment: ${investment._id}`);
+            console.log(`✅ Completed and deleted investment: ${investment._id}`);
 
             profitResults.expiredInvestments++;
           }
@@ -91,65 +88,39 @@ class ProfitService {
             console.log(`✅ Updated user balances after processing expired investments`);
           }
 
-          // Process remaining active investments (not expiring today)
+          // Process active investments (not expiring within 24 hours)
           const activeInvestments = await Investment.find({
             userId: user._id,
             status: 'approved',
             expiresAt: {
-              $gt: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000) // Only truly active investments
+              $gt: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
             }
           });
 
-          console.log(`Found ${activeInvestments.length} active investments for user`);
+          console.log(`Found ${activeInvestments.length} active investments`);
 
-          if (activeInvestments.length === 0) {
-            console.log('No active investments to process, skipping user');
-            continue;
-          }
-
-          let userDailyProfit = 0;
-
+          // Process active investments
           for (const investment of activeInvestments) {
-            console.log(`\nProcessing Investment: ${investment._id}`);
-            console.log(`Package: ${investment.selectedPackage}`);
-            console.log(`Amount: $${investment.amount}`);
-            console.log(`Current Profit: $${investment.profit}`);
+            const plan = await InvestmentPlan.findOne({ name: investment.selectedPackage });
+            if (!plan) continue;
 
-            // Get investment plan details
-            const plan = await InvestmentPlan.findOne({ 
-              name: investment.selectedPackage
-            });
-            
-            if (!plan) {
-                console.log(plan)
-              console.error(`❌ Plan not found for investment ${investment._id}`);
-              continue;
-            }
-
-            console.log(`Found plan: ${plan.name} (${plan.dailyProfit}% daily)`);
-
-            // Calculate daily profit
             const dailyProfit = (investment.amount * plan.dailyProfit) / 100;
             console.log(`Calculated daily profit: $${dailyProfit}`);
-            
+
             // Update investment profit
-            const oldProfit = investment.profit;
             investment.profit += dailyProfit;
             investment.isProfitAdded = true;
             investment.lastProfitUpdate = new Date();
-            
-            console.log(`Updated investment profit: $${oldProfit} -> $${investment.profit}`);
-            
-            // Add daily profit to total earnings and save investment
-            user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
-            user.availableBalance = (user.availableBalance || 0) + dailyProfit;
-            console.log(`Added daily profit to available balance: $${dailyProfit}`);
-            
             await investment.save();
-            console.log(`✅ Saved investment update`);
+
+            // Add daily profit to both total earnings and active deposit
+            user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
+            user.activeDeposit = (user.activeDeposit || 0) + dailyProfit;
+            
+            console.log(`Added daily profit to total earnings and active deposit: $${dailyProfit}`);
 
             // Create profit transaction
-            const transaction = await Transaction.create({
+            await Transaction.create({
               userId: user._id,
               type: 'profit',
               amount: dailyProfit,
@@ -159,19 +130,15 @@ class ProfitService {
               walletAddress: user.walletAddress
             });
 
-            console.log(`✅ Created profit transaction: ${transaction._id}`);
-
             profitResults.successful++;
             profitResults.totalProfitDistributed += dailyProfit;
           }
 
-          // Update user's total earnings
-          const oldEarnings = user.totalEarnings || 0;
-          user.totalEarnings = oldEarnings + userDailyProfit;
-          await user.save();
-          
-          console.log(`Updated user total earnings: $${oldEarnings} -> $${user.totalEarnings}`);
-          console.log(`✅ Saved user data`);
+          // Save final user updates
+          if (activeInvestments.length > 0) {
+            await user.save();
+            console.log(`✅ Updated user data for active investments`);
+          }
 
           profitResults.usersProcessed++;
         } catch (error) {
