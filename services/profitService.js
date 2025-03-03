@@ -9,8 +9,7 @@ class ProfitService {
       console.log('\n=== Starting Daily Profit Distribution ===\n');
       
       const currentDate = new Date();
-      currentDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
-      console.log(`Processing for date: ${currentDate.toDateString()}`);
+      console.log(`Processing for date: ${currentDate.toISOString()}`);
 
       const users = await User.find({}).select('_id username totalEarnings walletAddress availableBalance activeDeposit');
       console.log(`Found ${users.length} total users`);
@@ -31,38 +30,53 @@ class ProfitService {
           const expiredInvestments = await Investment.find({
             userId: user._id,
             status: 'approved',
-            expiresAt: {
-              $lte: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
-            }
+            expiresAt: { $lte: currentDate }
           });
 
-          console.log(`Found ${expiredInvestments.length} investments expiring within 24 hours`);
+          console.log(`Found ${expiredInvestments.length} expired investments`);
 
-          // Process expiring investments
+          // Process expired investments
           for (const investment of expiredInvestments) {
             console.log(`\nProcessing Investment: ${investment._id}`);
-            console.log(`Amount: $${investment.amount}, Current Profit: $${investment.profit}`);
+            console.log(`Created At: ${investment.createdAt}`);
+            console.log(`Expires At: ${investment.expiresAt}`);
+            console.log(`Current Time: ${currentDate}`);
+            console.log(`Initial Active Deposit: $${user.activeDeposit}`);
+            console.log(`Investment Amount: $${investment.amount}, Current Profit: $${investment.profit}`);
 
-            // Calculate final daily profit
             const plan = await InvestmentPlan.findOne({ name: investment.selectedPackage });
-            if (plan) {
-              const finalDailyProfit = (investment.amount * plan.dailyProfit) / 100;
-              investment.profit += finalDailyProfit;
-              console.log(`Added final daily profit: $${finalDailyProfit}`);
+            if (!plan) continue;
+
+            // Check if profit was already added today
+            const lastUpdate = investment.lastProfitUpdate ? new Date(investment.lastProfitUpdate) : null;
+            const profitNotAddedToday = !lastUpdate || 
+              lastUpdate.toDateString() !== currentDate.toDateString();
+
+            let dailyProfit = 0;
+            if (profitNotAddedToday) {
+              // Calculate the final profit
+              dailyProfit = (investment.amount * plan.dailyProfit) / 100;
               
-              // Add daily profit to total earnings
-              user.totalEarnings = (user.totalEarnings || 0) + finalDailyProfit;
-              console.log(`Updated total earnings with final profit: $${finalDailyProfit}`);
+              // Add profit to active deposit first
+              user.activeDeposit = (user.activeDeposit || 0) + dailyProfit;
+              console.log(`Added profit to active deposit: $${dailyProfit}`);
+              console.log(`Active deposit after adding profit: $${user.activeDeposit}`);
+
+              // Update investment profit and total earnings
+              investment.profit += dailyProfit;
+              user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
             }
 
-            // Add investment amount and total profit to available balance
+            // Now deduct both investment amount and profit from active deposit
+            const totalDeduction = investment.amount + investment.profit;
+            user.activeDeposit = (user.activeDeposit || 0) - totalDeduction;
+            console.log(`Deducted investment amount from active deposit: $${totalDeduction}`);
+            console.log(`Final active deposit: $${user.activeDeposit}`);
+
+            // Add everything to available balance
             console.log(`Available balance before: $${user.availableBalance}`);
             user.availableBalance = (user.availableBalance || 0) + investment.amount + investment.profit;
             console.log(`Available balance after: $${user.availableBalance}`);
-
-            // Deduct investment amount and profit from active deposit
-            user.activeDeposit = (user.activeDeposit || 0) - (investment.amount + investment.profit);
-            console.log(`Updated active deposit: $${user.activeDeposit}`);
 
             // Create completion transaction
             await Transaction.create({
@@ -75,11 +89,27 @@ class ProfitService {
               walletAddress: user.walletAddress
             });
 
+            // If profit was added today, create profit transaction
+            if (dailyProfit > 0) {
+              await Transaction.create({
+                userId: user._id,
+                type: 'profit',
+                amount: dailyProfit,
+                status: 'completed',
+                currency: investment.paymentMethod,
+                description: `Final daily profit from ${investment.selectedPackage} investment`,
+                walletAddress: user.walletAddress
+              });
+            }
+
             // Delete the investment
             await Investment.findByIdAndDelete(investment._id);
             console.log(`✅ Completed and deleted investment: ${investment._id}`);
 
             profitResults.expiredInvestments++;
+            if (dailyProfit > 0) {
+              profitResults.totalProfitDistributed += dailyProfit;
+            }
           }
 
           // Save user changes if any expired investments were processed
@@ -88,32 +118,36 @@ class ProfitService {
             console.log(`✅ Updated user balances after processing expired investments`);
           }
 
-          // Process active investments (not expiring within 24 hours)
+          // Process active investments
           const activeInvestments = await Investment.find({
             userId: user._id,
             status: 'approved',
-            expiresAt: {
-              $gt: new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
-            }
+            expiresAt: { $gt: currentDate }
           });
 
           console.log(`Found ${activeInvestments.length} active investments`);
 
-          // Process active investments
           for (const investment of activeInvestments) {
             const plan = await InvestmentPlan.findOne({ name: investment.selectedPackage });
             if (!plan) continue;
 
+            // Check if profit was already added today
+            const lastUpdate = investment.lastProfitUpdate ? new Date(investment.lastProfitUpdate) : null;
+            if (lastUpdate && lastUpdate.toDateString() === currentDate.toDateString()) {
+              console.log(`Profit already added today for investment: ${investment._id}`);
+              continue;
+            }
+
             const dailyProfit = (investment.amount * plan.dailyProfit) / 100;
             console.log(`Calculated daily profit: $${dailyProfit}`);
 
-            // Update investment profit
+            // Update investment
             investment.profit += dailyProfit;
             investment.isProfitAdded = true;
-            investment.lastProfitUpdate = new Date();
+            investment.lastProfitUpdate = currentDate;
             await investment.save();
 
-            // Add daily profit to both total earnings and active deposit
+            // Update user balances
             user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
             user.activeDeposit = (user.activeDeposit || 0) + dailyProfit;
             
@@ -134,7 +168,6 @@ class ProfitService {
             profitResults.totalProfitDistributed += dailyProfit;
           }
 
-          // Save final user updates
           if (activeInvestments.length > 0) {
             await user.save();
             console.log(`✅ Updated user data for active investments`);
