@@ -65,6 +65,17 @@ class ProfitService {
               // Update investment profit and total earnings
               investment.profit += dailyProfit;
               user.totalEarnings = (user.totalEarnings || 0) + dailyProfit;
+              
+              // Create profit transaction for the final day
+              await Transaction.create({
+                userId: user._id,
+                type: 'profit',
+                amount: dailyProfit,
+                status: 'completed',
+                currency: investment.paymentMethod,
+                description: `Final daily profit from ${investment.selectedPackage} investment`,
+                walletAddress: user.walletAddress
+              });
             }
 
             // Now deduct both investment amount and profit from active deposit
@@ -88,19 +99,6 @@ class ProfitService {
               description: `Investment completed: ${investment.selectedPackage} - Principal: $${investment.amount}, Total Profit: $${investment.profit}`,
               walletAddress: user.walletAddress
             });
-
-            // If profit was added today, create profit transaction
-            if (dailyProfit > 0) {
-              await Transaction.create({
-                userId: user._id,
-                type: 'profit',
-                amount: dailyProfit,
-                status: 'completed',
-                currency: investment.paymentMethod,
-                description: `Final daily profit from ${investment.selectedPackage} investment`,
-                walletAddress: user.walletAddress
-              });
-            }
 
             // Delete the investment
             await Investment.findByIdAndDelete(investment._id);
