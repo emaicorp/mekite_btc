@@ -138,6 +138,20 @@ class ProfitService {
               continue;
             }
 
+            // Check if this is the first day of investment
+            const isFirstDay = investment.createdAt.toDateString() === currentDate.toDateString();
+            if (isFirstDay) {
+              console.log(`Skipping profit on first day for investment: ${investment._id}`);
+              continue;
+            }
+
+            // Check if this is the last day of investment
+            const isLastDay = investment.expiresAt.toDateString() === currentDate.toDateString();
+            if (isLastDay) {
+              console.log(`Skipping profit on last day for investment: ${investment._id}`);
+              continue;
+            }
+
             const dailyProfit = (investment.amount * plan.dailyProfit) / 100;
             console.log(`Calculated daily profit: $${dailyProfit}`);
 
