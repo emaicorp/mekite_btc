@@ -16,7 +16,15 @@ const options = {
       {
         url: 'http://localhost:5001/api',
         description: 'Development server'
-      }
+      },
+      {
+        url: 'https://mekite-btc-1.onrender.com/api',
+        description: 'Production server'
+      },
+      {
+        url: 'https://mekite-btc-zkgz.onrender.com/api',
+        description: 'Production server'
+      },
     ],
     components: {
       securitySchemes: {
