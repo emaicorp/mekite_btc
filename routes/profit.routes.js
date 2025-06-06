@@ -6,8 +6,8 @@ const AuthMiddleware = require('../middleware/auth');
 /**
  * @swagger
  * /profit/distribute:
- *   post:
- *     summary: Distribute daily profits to all active investments (Admin only)
+ *   get:
+ *     summary: Distribute daily profits to all active investments
  *     tags: [Profit]
  *     security:
  *       - bearerAuth: []
@@ -33,7 +33,7 @@ const AuthMiddleware = require('../middleware/auth');
  *       403:
  *         description: Admin access required
  */
-router.post('/distribute', 
+router.get('/distribute', 
  
   ProfitController.distributeDailyProfits
 );
