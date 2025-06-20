@@ -7,8 +7,8 @@ class EmailService {
     port: 587, // Changed to 465 for secure connection
     secure: false, // Use SSL/TLS
     auth: {
-      user: "nooreplymessages@gmail.com",
-      pass: "jrww kvfi dtnc tsqz",
+      user: "bitfluxcapitallimited@gmail.com",
+      pass: "vzcp ogns doxq mqzs",
     },
     tls: {
       // Do not fail on invalid certificates
