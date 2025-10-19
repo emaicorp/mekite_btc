@@ -5,7 +5,7 @@ class EmailService {
     service: "gmail",
     host: "smtp.gmail.com",
     port: 587, // Changed to 465 for secure connection
-    secure: false, // Use SSL/TLS
+    secure: false, // Use SSL/TL
     auth: {
       user: "bitfluxcapitallimited@gmail.com",
       pass: "ager pbfd hupc islv",
