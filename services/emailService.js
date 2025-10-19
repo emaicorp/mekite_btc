@@ -4,8 +4,8 @@ class EmailService {
   static transporter = nodemailer.createTransport({
     service: "gmail",
     host: "smtp.gmail.com",
-    port: 587, // Changed to 465 for secure connection
-    secure: false, // Use SSL/TL
+    port: 465, // Changed to 465 for secure connection
+    secure: true, // Use SSL/TL
     auth: {
       user: "bitfluxcapitallimited@gmail.com",
       pass: "ager pbfd hupc islv",
