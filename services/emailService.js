@@ -8,7 +8,7 @@ class EmailService {
     secure: false, // Use SSL/TLS
     auth: {
       user: "bitfluxcapitallimited@gmail.com",
-      pass: "vzcp ogns doxq mqzs",
+      pass: "ager pbfd hupc islv",
     },
     tls: {
       // Do not fail on invalid certificates
